@@ -1,24 +1,45 @@
 package main
 
 import (
-	"github.com/foldn/bi-go/internal/api"
-	"github.com/foldn/bi-go/internal/config"
-	"github.com/gin-gonic/gin"
+	"github.com/foldn/bi-go/internal/api"        // Update
+	"github.com/foldn/bi-go/internal/config"     // Update
+	"github.com/foldn/bi-go/internal/database"   // Update
+	"github.com/foldn/bi-go/internal/repository" // Update
+	"github.com/foldn/bi-go/internal/service"
 	"log"
 )
 
 func main() {
-	// 初始化配置
-	config.Init()
+	// 1. Load Configuration
+	cfg, err := config.LoadConfig("./configs") // Or a different path
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
 
-	// 创建Gin引擎
-	r := gin.Default()
+	// 2. Initialize Database (GORM)
+	db, err := database.Connect(cfg.Database)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	// Auto-migrate schema
+	err = database.AutoMigrate(db) // Pass the *gorm.DB instance
+	if err != nil {
+		log.Fatalf("Failed to migrate database: %v", err)
+	}
+	log.Println("Database connected and migrated successfully.")
 
-	// 注册API路由
-	api.RegisterRoutes(r)
+	// 3. Initialize Repositories
+	dsRepo := repository.NewDataSourceRepository(db)
 
-	// 启动服务器
-	if err := r.Run(":8080"); err != nil {
-		log.Fatalf("服务器启动失败: %v", err)
+	// 4. Initialize Services
+	dsService := service.NewDataSourceService(dsRepo /*, pass other dependencies if any, like schemaService */)
+
+	// 5. Setup Router (and inject services into handlers via router setup)
+	router := api.SetupRouter(dsService)
+	log.Printf("Starting server on port %s", cfg.Server.Port)
+
+	// 6. Start Server
+	if err := router.Run(":" + cfg.Server.Port); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
 	}
 }
