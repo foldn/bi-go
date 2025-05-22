@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+type DataSourceDriver interface {
+	Connect(cfg config.DatabaseConfig) (*gorm.DB, error)
+}
+
 var DB *gorm.DB
 
 func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {

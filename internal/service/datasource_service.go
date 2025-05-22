@@ -5,7 +5,14 @@ import (
 	"fmt"
 	"github.com/foldn/bi-go/internal/models"
 	"github.com/foldn/bi-go/internal/repository"
+	"gorm.io/driver/clickhouse"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"log"
+	"os"
+	"time"
 )
 
 type DataSourceService interface {
@@ -35,22 +42,22 @@ type CreateDataSourceInput struct {
 	Port        string                `json:"port"`
 	Username    string                `json:"username"`
 	Password    string                `json:"password"`
-	DBName      string                `json:"db_name"`
-	FilePath    string                `json:"file_path"`
-	OtherParams string                `json:"other_params"`
+	DBName      string                `json:"dbName"`
+	FilePath    string                `json:"filePath"`
+	OtherParams string                `json:"otherParams"`
 	Description string                `json:"description"`
 }
 
 type UpdateDataSourceInput struct {
 	Name        *string                `json:"name"` // Use pointers for optional updates
-	Type        *models.DataSourceType `json:"type" binding:"omitempty,oneof=postgresql mysql csv"`
+	Type        *models.DataSourceType `json:"type" binding:"omitempty,oneof=postgresql mysql csv clickhouse sqlite"`
 	Host        *string                `json:"host"`
 	Port        *string                `json:"port"`
 	Username    *string                `json:"username"`
 	Password    *string                `json:"password"`
-	DBName      *string                `json:"db_name"`
-	FilePath    *string                `json:"file_path"`
-	OtherParams *string                `json:"other_params"`
+	DBName      *string                `json:"dbName"`
+	FilePath    *string                `json:"filePath"`
+	OtherParams *string                `json:"otherParams"`
 	Description *string                `json:"description"`
 }
 
@@ -123,12 +130,32 @@ func (s *dataSourceService) UpdateDataSource(id uint, input UpdateDataSourceInpu
 	if input.Host != nil {
 		ds.Host = *input.Host
 	}
+
+	if input.Port != nil {
+		ds.Port = *input.Port
+	}
 	// ... update other fields similarly
+
+	if input.Username != nil {
+		ds.Username = *input.Username
+	}
 	if input.Password != nil {
 		ds.Password = *input.Password
 	} // Security!
 	if input.Description != nil {
 		ds.Description = *input.Description
+	}
+
+	if input.DBName != nil {
+		ds.DBName = *input.DBName
+	}
+
+	if input.FilePath != nil {
+		ds.FilePath = *input.FilePath
+	}
+
+	if input.OtherParams != nil {
+		ds.OtherParams = *input.OtherParams
 	}
 
 	if err := s.repo.Update(ds); err != nil {
@@ -152,6 +179,72 @@ func (s *dataSourceService) GetDataSourceSchema(dataSourceID uint) (interface{},
 	// 2. Based on ds.Type, connect to the actual data source (NOT the metadata DB)
 	// 3. Fetch schema (tables for DBs, columns for CSVs)
 	// 4. Return formatted schema
+	ds, err := s.repo.GetByID(dataSourceID)
+	if err != nil {
+		return nil, err
+	}
+
+	dataSourceType := ds.Type
+	switch dataSourceType {
+	case models.PostgreSQL:
+		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
+			ds.Host, ds.Username, ds.Password, ds.DBName, ds.Port)
+
+		newLogger := logger.New(
+			log.New(os.Stdout, "\r\n", log.LstdFlags),
+			logger.Config{
+				SlowThreshold: time.Second,
+				LogLevel:      logger.Info, // Or logger.Silent for less noise
+				Colorful:      true,
+			},
+		)
+		postgresDb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+			Logger: newLogger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to postgresDb: %w", err)
+		}
+		return postgresDb.Exec("SHOW DATABASES"), err
+	case models.ClickHouse:
+		dsn := fmt.Sprintf("tcp://%s:%s?username=%s&password=%s&database=%s",
+			ds.Host, ds.Port, ds.Username, ds.Password, ds.DBName)
+
+		newLogger := logger.New(
+			log.New(os.Stdout, "\r\n", log.LstdFlags),
+			logger.Config{
+				SlowThreshold: time.Second,
+				LogLevel:      logger.Info, // Or logger.Silent for less noise
+				Colorful:      true,
+			},
+		)
+		clickhouseDb, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{
+			Logger: newLogger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to clickhouse:%w ,%w", dsn, err)
+		}
+		return clickhouseDb.Exec("show databases;"), err
+	case models.Sqlite:
+		dsn := fmt.Sprintf("tcp://%s:%s?username=%s&password=%s&database=%s",
+			ds.Host, ds.Port, ds.Username, ds.Password, ds.DBName)
+
+		newLogger := logger.New(
+			log.New(os.Stdout, "\r\n", log.LstdFlags),
+			logger.Config{
+				SlowThreshold: time.Second,
+				LogLevel:      logger.Info, // Or logger.Silent for less noise
+				Colorful:      true,
+			},
+		)
+		sqlLiteDb, err := gorm.Open(sqlite.Open("gorm.db"), &gorm.Config{
+			Logger: newLogger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to clickhouse:%w ,%w", dsn, err)
+		}
+		return sqlLiteDb.Exec("show databases;"), err
+	default:
+	}
 	return nil, errors.New("GetDataSourceSchema not implemented yet")
 }
 
