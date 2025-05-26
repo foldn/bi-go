@@ -11,7 +11,7 @@ const (
 	MySQL      DataSourceType = "mysql"
 	CSV        DataSourceType = "csv"
 	ClickHouse DataSourceType = "clickhouse"
-	Sqlite     DataSourceType = "sqlite"
+	SQLite     DataSourceType = "sqlite"
 )
 
 const (

@@ -1,11 +1,15 @@
 package main
 
 import (
+	_ "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/foldn/bi-go/internal/api"        // Update
 	"github.com/foldn/bi-go/internal/config"     // Update
 	"github.com/foldn/bi-go/internal/database"   // Update
 	"github.com/foldn/bi-go/internal/repository" // Update
 	"github.com/foldn/bi-go/internal/service"
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 	"log"
 )
 
