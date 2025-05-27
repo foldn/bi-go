@@ -29,10 +29,10 @@ func (r *dataSourceRepository) Create(ds *models.DataSource) error {
 func (r *dataSourceRepository) GetAll(offset, limit int) ([]models.DataSource, int64, error) {
 	var dataSources []models.DataSource
 	var total int64
-	if err := r.db.Model(&models.DataSource{}).Where("is_delete = ?", models.NOT_DELETE).Count(&total).Error; err != nil {
+	if err := r.db.Model(&models.DataSource{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if err := r.db.Where("is_delete = ?", models.NOT_DELETE).Offset(offset).Limit(limit).Find(&dataSources).Error; err != nil {
+	if err := r.db.Offset(offset).Limit(limit).Find(&dataSources).Error; err != nil {
 		return nil, total, err
 	}
 	return dataSources, total, nil
@@ -40,7 +40,7 @@ func (r *dataSourceRepository) GetAll(offset, limit int) ([]models.DataSource, i
 
 func (r *dataSourceRepository) GetByID(id uint) (*models.DataSource, error) {
 	var ds models.DataSource
-	if err := r.db.Where("is_delete = ?", models.NOT_DELETE).First(&ds, id).Error; err != nil {
+	if err := r.db.First(&ds, id).Error; err != nil {
 		return nil, err
 	}
 	return &ds, nil
@@ -51,12 +51,12 @@ func (r *dataSourceRepository) Update(ds *models.DataSource) error {
 }
 
 func (r *dataSourceRepository) Delete(id uint) error {
-	return r.db.Model(&models.DataSource{}).Where("id = ?", id).Update("is_delete", models.IS_DELETE).Error
+	return r.db.Model(&models.DataSource{}).Error
 }
 
 func (r *dataSourceRepository) GetByName(name string) (*models.DataSource, error) {
 	var ds models.DataSource
-	if err := r.db.Where("name = ? and is_delete = ?", name, models.NOT_DELETE).First(&ds).Error; err != nil {
+	if err := r.db.First(&ds).Error; err != nil {
 		return nil, err
 	}
 	return &ds, nil

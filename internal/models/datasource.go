@@ -31,5 +31,4 @@ type DataSource struct {
 	FilePath    string         `gorm:"type:text"`
 	OtherParams string         `gorm:"type:text"`
 	Description string         `gorm:"type:text"`
-	IsDelete    IsDeleteType   `gorm:"type:tinyint"`
 }

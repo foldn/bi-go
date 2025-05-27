@@ -18,7 +18,7 @@
 │   ├── config/             # 配置管理
 │   ├── models/             # 数据模型
 │   ├── services/           # 业务逻辑服务
-│   └── storage/            # 数据存储实现
+│   └── repository/            # 数据存储实现
 ├── pkg/                    # 可以被外部应用使用的库代码
 │   └── utils/              # 通用工具函数
 ├── examples/               # 示例应用
@@ -71,13 +71,12 @@ go build -o bin/bi-go ./cmd/bi-go
     2.  **数据源模式 (Schema) 发现:** 获取数据源的表/视图/列信息。
 * **主要API端点：**
     * `POST /api/v1/datasources`: 创建数据源配置。
-        * *请求示例: `{ "name": "my_db", "type": "postgresql", "connection_string": "..." }`*
     * `GET /api/v1/datasources`: 列出所有数据源。
     * `GET /api/v1/datasources/{datasource_id}`: 获取特定数据源配置。
     * `PUT /api/v1/datasources/{datasource_id}`: 更新数据源配置。
     * `DELETE /api/v1/datasources/{datasource_id}`: 删除数据源配置。
-    * `GET /api/v1/datasources/{datasource_id}/schema`: 获取数据源的顶层结构 (如表列表)。
-    * `GET /api/v1/datasources/{datasource_id}/schema/{entity_name}`: 获取特定实体的详细列结构。
+    * `GET /api/v1/datasources/{datasource_id}/schema`: 获取数据源的顶层结构 (获取表列表)。
+    * `GET /api/v1/datasources/{datasource_id}/schema/{entity_name}`: 获取特定表的详细列结构。
 
 ---
 
@@ -93,7 +92,7 @@ go build -o bin/bi-go ./cmd/bi-go
     * `GET /api/v1/jobs/{job_id}/result`: 获取任务结果 (支持分页)。
 
 ---
-
+"mobileMd5\\":\\"([a-fA-F0-9]+)
 ### 阶段三：高级数据转换与“分析定义”持久化 API
 
 * **目标：** 扩展转换引擎，支持Join、复杂计算字段等高级操作，并允许用户保存和加载“分析定义”。

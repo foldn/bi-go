@@ -16,10 +16,10 @@ import (
 )
 
 type DataSourceService interface {
-	CreateDataSource(input CreateDataSourceInput) (*models.DataSource, error)
+	CreateDataSource(input models.CreateDataSourceInput) (*models.DataSource, error)
 	GetDataSources(page, pageSize int) ([]models.DataSource, int64, error)
 	GetDataSourceByID(id uint) (*models.DataSource, error)
-	UpdateDataSource(id uint, input UpdateDataSourceInput) (*models.DataSource, error)
+	UpdateDataSource(id uint, input models.UpdateDataSourceInput) (*models.DataSource, error)
 	DeleteDataSource(id uint) error
 
 	// Schema discovery methods - to be detailed in schema_service.go or here
@@ -35,33 +35,7 @@ func NewDataSourceService(repo repository.DataSourceRepository) DataSourceServic
 	return &dataSourceService{repo: repo}
 }
 
-type CreateDataSourceInput struct {
-	Name        string                `json:"name" binding:"required"`
-	Type        models.DataSourceType `json:"type" binding:"required,oneof=postgresql mysql csv"`
-	Host        string                `json:"host"`
-	Port        string                `json:"port"`
-	Username    string                `json:"username"`
-	Password    string                `json:"password"`
-	DBName      string                `json:"dbName"`
-	FilePath    string                `json:"filePath"`
-	OtherParams string                `json:"otherParams"`
-	Description string                `json:"description"`
-}
-
-type UpdateDataSourceInput struct {
-	Name        *string                `json:"name"` // Use pointers for optional updates
-	Type        *models.DataSourceType `json:"type" binding:"omitempty,oneof=postgresql mysql csv clickhouse sqlite"`
-	Host        *string                `json:"host"`
-	Port        *string                `json:"port"`
-	Username    *string                `json:"username"`
-	Password    *string                `json:"password"`
-	DBName      *string                `json:"dbName"`
-	FilePath    *string                `json:"filePath"`
-	OtherParams *string                `json:"otherParams"`
-	Description *string                `json:"description"`
-}
-
-func (s *dataSourceService) CreateDataSource(input CreateDataSourceInput) (*models.DataSource, error) {
+func (s *dataSourceService) CreateDataSource(input models.CreateDataSourceInput) (*models.DataSource, error) {
 	// Check for duplicate name
 	existing, err := s.repo.GetByName(input.Name)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -104,7 +78,7 @@ func (s *dataSourceService) GetDataSourceByID(id uint) (*models.DataSource, erro
 	return s.repo.GetByID(id)
 }
 
-func (s *dataSourceService) UpdateDataSource(id uint, input UpdateDataSourceInput) (*models.DataSource, error) {
+func (s *dataSourceService) UpdateDataSource(id uint, input models.UpdateDataSourceInput) (*models.DataSource, error) {
 	ds, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, err // handles gorm.ErrRecordNotFound appropriately

@@ -2,6 +2,7 @@ package v1
 
 import (
 	"errors"
+	"github.com/foldn/bi-go/internal/models"
 	"github.com/foldn/bi-go/internal/service"
 	"net/http"
 	"strconv"
@@ -53,7 +54,7 @@ func handleError(c *gin.Context, err error, defaultStatusCode int) {
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /datasources [post]
 func (h *DataSourceHandler) CreateDataSource(c *gin.Context) {
-	var input service.CreateDataSourceInput
+	var input models.CreateDataSourceInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
@@ -160,7 +161,7 @@ func (h *DataSourceHandler) UpdateDataSource(c *gin.Context) {
 		return
 	}
 
-	var input service.UpdateDataSourceInput
+	var input models.UpdateDataSourceInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
