@@ -1,6 +1,10 @@
 package models
 
-import "gorm.io/gorm"
+import (
+	"fmt"
+	"gorm.io/gorm"
+	"strings"
+)
 
 type DataSourceType string
 
@@ -31,4 +35,21 @@ type DataSource struct {
 	FilePath    string         `gorm:"type:text"`
 	OtherParams string         `gorm:"type:text"`
 	Description string         `gorm:"type:text"`
+}
+
+func (ds *DataSource) QuoteIdentifier(name string) string {
+	if name == "" {
+		return "" // Handle empty identifier if necessary, or error
+	}
+	switch ds.Type {
+	case PostgreSQL, SQLite:
+		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	case MySQL, ClickHouse:
+		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	case CSV:
+		return name
+	default:
+		fmt.Printf("Warning: QuoteIdentifier used for unhandled DataSourceType: %s. Identifier '%s' returned as is.\n", ds.Type, name)
+		return name
+	}
 }

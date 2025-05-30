@@ -11,6 +11,10 @@ import (
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -34,16 +38,34 @@ func main() {
 
 	// 3. Initialize Repositories
 	dsRepo := repository.NewDataSourceRepository(db)
+	jobRepo := repository.NewJobRepository(db)
 
 	// 4. Initialize Services
-	dsService := service.NewDataSourceService(dsRepo /*, pass other dependencies if any, like schemaService */)
+	dsService := service.NewDataSourceService(dsRepo)
+	jobService := service.NewJobService(jobRepo, dsService, cfg.JobConfig)
+
+	jobService.StartWorkers()
 
 	// 5. Setup Router (and inject services into handlers via router setup)
-	router := api.SetupRouter(dsService)
+	router := api.SetupRouter(dsService, jobService)
 	log.Printf("Starting server on port %s", cfg.Server.Port)
 
 	// 6. Start Server
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+
+	go func() {
+		if err := router.Run(":" + cfg.Server.Port); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("FATAL: Unable to start HTTP server: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
+
+	sig := <-quit
+	log.Printf("INFO: The signal is received %s，The server is ready to shut down...", sig.String())
+
+	log.Println("INFO: The server was successfully shut down。")
 }

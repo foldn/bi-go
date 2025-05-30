@@ -27,9 +27,9 @@ type UpdateDataSourceInput struct {
 }
 
 type ProcessJobInput struct {
-	DataSourceID  uint            `json:"datasource_id" binding:"required"`
-	EntityName    string          `json:"entity_name" binding:"required"`
+	DataSourceID  uint            `json:"datasourceId" binding:"required"`
+	EntityName    string          `json:"entityName" binding:"required"`
 	Operations    []OperationStep `json:"operations" binding:"required,dive"` // dive ensures nested validation
-	OutputFormat  OutputFormat    `json:"output_format" binding:"omitempty,oneof=json csv"`
-	ExecutionMode ExecutionMode   `json:"execution_mode" binding:"omitempty,oneof=sync async"`
+	OutputFormat  OutputFormat    `json:"outputFormat" binding:"omitempty,oneof=json csv"`
+	ExecutionMode ExecutionMode   `json:"executionMode" binding:"omitempty,oneof=sync async"`
 }

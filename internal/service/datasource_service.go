@@ -25,6 +25,8 @@ type DataSourceService interface {
 	// Schema discovery methods - to be detailed in schema_service.go or here
 	GetDataSourceSchema(dataSourceID uint) (interface{}, error)
 	GetDataSourceEntitySchema(dataSourceID uint, entityName string) (interface{}, error)
+
+	GetDBConnection(dataSourceID uint) (*sql.DB, *models.DataSource, error)
 }
 
 type dataSourceService struct {
@@ -147,7 +149,7 @@ func (s *dataSourceService) DeleteDataSource(id uint) error {
 	return s.repo.Delete(id)
 }
 
-func (s *dataSourceService) getDBConnection(dataSourceID uint) (*sql.DB, *models.DataSource, error) {
+func (s *dataSourceService) GetDBConnection(dataSourceID uint) (*sql.DB, *models.DataSource, error) {
 	ds, err := s.repo.GetByID(dataSourceID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("datasource with ID %d not found: %w", dataSourceID, err)
@@ -223,7 +225,7 @@ func (s *dataSourceService) GetDataSourceSchema(dataSourceID uint) (interface{},
 		return []models.EntityInfo{{Name: filepath.Base(dsConfig.FilePath), Type: "FILE"}}, nil
 	}
 
-	db, _, err := s.getDBConnection(dataSourceID) // dsConfig already fetched
+	db, _, err := s.GetDBConnection(dataSourceID) // dsConfig already fetched
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +328,7 @@ func (s *dataSourceService) GetDataSourceEntitySchema(dataSourceID uint, entityN
 		}, nil
 	}
 
-	db, _, err := s.getDBConnection(dataSourceID) // dsConfig already fetched
+	db, _, err := s.GetDBConnection(dataSourceID) // dsConfig already fetched
 	if err != nil {
 		return nil, err
 	}

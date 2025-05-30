@@ -56,7 +56,7 @@ func (r *dataSourceRepository) Delete(id uint) error {
 
 func (r *dataSourceRepository) GetByName(name string) (*models.DataSource, error) {
 	var ds models.DataSource
-	if err := r.db.First(&ds).Error; err != nil {
+	if err := r.db.Where("name = ?", name).First(&ds).Error; err != nil {
 		return nil, err
 	}
 	return &ds, nil

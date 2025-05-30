@@ -3,8 +3,9 @@ package config
 import "github.com/spf13/viper"
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	JobConfig JobConfig
 }
 
 type ServerConfig struct {
@@ -18,6 +19,11 @@ type DatabaseConfig struct {
 	Password string
 	DBName   string
 	SSLMode  string
+}
+
+type JobConfig struct {
+	ResultsBasePath string
+	NumWorkers      int
 }
 
 func LoadConfig(path string) (config Config, err error) {

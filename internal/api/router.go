@@ -3,11 +3,11 @@ package api
 import (
 	"github.com/foldn/bi-go/internal/api/v1"
 	"github.com/foldn/bi-go/internal/service"
-
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(dsService service.DataSourceService /*, other services can be passed here */) *gin.Engine {
+func SetupRouter(dsService service.DataSourceService,
+	jobService service.JobService) *gin.Engine {
 	// gin.SetMode(gin.ReleaseMode) // Uncomment for production
 	router := gin.Default() // Includes logger and recovery middleware
 
@@ -18,6 +18,7 @@ func SetupRouter(dsService service.DataSourceService /*, other services can be p
 
 	// Instantiate handlers
 	dsHandler := v1.NewDataSourceHandler(dsService)
+	jobHandler := v1.NewJobHandler(jobService) // <--- 实例化 JobHandler
 
 	// Base API group
 	apiV1 := router.Group("/api/v1")
@@ -32,6 +33,14 @@ func SetupRouter(dsService service.DataSourceService /*, other services can be p
 			dsRoutes.DELETE("/:id", dsHandler.DeleteDataSource)
 			dsRoutes.GET("/:id/schema", dsHandler.GetDataSourceSchema)
 			dsRoutes.GET("/:id/schema/:entity_name", dsHandler.GetDataSourceEntitySchema)
+		}
+
+		// Job routes
+		jobRoutes := apiV1.Group("job")
+		{
+			jobRoutes.POST("/process", jobHandler.SubmitJob)
+			jobRoutes.GET("/:job_uuid/status", jobHandler.GetJobStatus)
+			jobRoutes.GET("/:job_uuid/result", jobHandler.GetJobResult)
 		}
 
 	}

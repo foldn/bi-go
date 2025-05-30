@@ -8,10 +8,10 @@ type EntityInfo struct {
 // ColumnInfo represents a column within an entity.
 type ColumnInfo struct {
 	Name            string `json:"name"`
-	DatabaseType    string `json:"database_type"` // Original type from the DB
-	ScanType        string `json:"scan_type"`     // Go type `reflect.TypeOf(value).Name()` from sql.ColumnType
-	IsNullable      bool   `json:"is_nullable"`
-	OrdinalPosition int    `json:"ordinal_position"`
+	DatabaseType    string `json:"databaseType"` // Original type from the DB
+	ScanType        string `json:"scanType"`     // Go type `reflect.TypeOf(value).Name()` from sql.ColumnType
+	IsNullable      bool   `json:"isNullable"`
+	OrdinalPosition int    `json:"ordinalPosition"`
 	// Add more fields if needed: DefaultValue, MaxLength, Precision, Scale, IsPrimaryKey, etc.
 }
 

@@ -11,6 +11,7 @@ type JobRepository interface {
 	UpdateJobStatus(id string, status models.JobStatus) error
 	UpdateJob(job *models.Job) error
 	GetJobs(offset, limit int) (*[]models.Job, int64, error)
+	GetJobByUUID(uuid string) (*models.Job, error)
 }
 
 type jobRepository struct {
@@ -52,4 +53,12 @@ func (r *jobRepository) GetJobs(offset, limit int) (*[]models.Job, int64, error)
 		return nil, total, err
 	}
 	return &jobs, total, nil
+}
+
+func (r *jobRepository) GetJobByUUID(uuid string) (*models.Job, error) {
+	var job models.Job
+	if err := r.db.Where("uuid = ?", uuid).First(&job).Error; err != nil {
+		return nil, err
+	}
+	return &job, nil
 }
