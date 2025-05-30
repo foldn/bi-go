@@ -36,7 +36,7 @@ func SetupRouter(dsService service.DataSourceService,
 		}
 
 		// Job routes
-		jobRoutes := apiV1.Group("job")
+		jobRoutes := apiV1.Group("/job")
 		{
 			jobRoutes.POST("/process", jobHandler.SubmitJob)
 			jobRoutes.GET("/:job_uuid/status", jobHandler.GetJobStatus)

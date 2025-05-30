@@ -90,7 +90,7 @@ func (s *jobService) StartWorkers() {
 
 func (s *jobService) SubmitJob(input models.ProcessJobInput) (*models.Job, interface{}, error) {
 	// 1. Validate DataSource
-	_, err := s.dsService.GetDataSourceByID(input.DataSourceID) // dsService has internal GORM error mapping
+	ds, err := s.dsService.GetDataSourceByID(input.DataSourceID) // dsService has internal GORM error mapping
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid datasource_id: %w", err)
 	}
@@ -119,6 +119,7 @@ func (s *jobService) SubmitJob(input models.ProcessJobInput) (*models.Job, inter
 	job := &models.Job{
 		UUID:          jobUUID,
 		DataSourceID:  input.DataSourceID,
+		DataSource:    *ds, // Assign the fetched DataSource object
 		EntityName:    input.EntityName,
 		Operations:    string(operationsJSON),
 		Status:        models.JobStatusPending,
