@@ -16,8 +16,8 @@ type Condition struct {
 
 // Aggregation defines aggregation parameters
 type Aggregation struct {
-	GroupBy      []string  `json:"group_by" binding:"required"`
-	AggFunctions []AggFunc `json:"agg_functions" binding:"required,min=1"`
+	GroupBy      []string  `json:"groupBy" binding:"required"`
+	AggFunctions []AggFunc `json:"aggFunctions" binding:"required,min=1"`
 }
 
 // AggFunc defines a single aggregation function

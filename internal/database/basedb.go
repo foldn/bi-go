@@ -44,7 +44,7 @@ func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
 }
 
 func AutoMigrate(db *gorm.DB) error {
-	err := db.AutoMigrate(&models.DataSource{}, &models.Job{})
+	err := db.AutoMigrate(&models.DataSource{}, &models.Job{}, &models.AnalysisDefinition{})
 	if err != nil {
 		return fmt.Errorf("failed to auto-migrate database: %w", err)
 	}

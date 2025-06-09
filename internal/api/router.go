@@ -7,7 +7,8 @@ import (
 )
 
 func SetupRouter(dsService service.DataSourceService,
-	jobService service.JobService) *gin.Engine {
+	jobService service.JobService,
+	analysisService service.AnalysisService) *gin.Engine {
 	// gin.SetMode(gin.ReleaseMode) // Uncomment for production
 	router := gin.Default() // Includes logger and recovery middleware
 
@@ -19,6 +20,7 @@ func SetupRouter(dsService service.DataSourceService,
 	// Instantiate handlers
 	dsHandler := v1.NewDataSourceHandler(dsService)
 	jobHandler := v1.NewJobHandler(jobService) // <--- 实例化 JobHandler
+	analysisHandler := v1.NewAnalysisHandler(analysisService)
 
 	// Base API group
 	apiV1 := router.Group("/api/v1")
@@ -41,6 +43,16 @@ func SetupRouter(dsService service.DataSourceService,
 			jobRoutes.POST("/process", jobHandler.SubmitJob)
 			jobRoutes.GET("/:job_uuid/status", jobHandler.GetJobStatus)
 			jobRoutes.GET("/:job_uuid/result", jobHandler.GetJobResult)
+		}
+
+		analysisRoutes := apiV1.Group("/analyses")
+		{
+			analysisRoutes.POST("", analysisHandler.CreateAnalysis)
+			analysisRoutes.GET("", analysisHandler.GetAnalyses)
+			analysisRoutes.GET("/:analysis_uuid", analysisHandler.GetAnalysisByUUID)
+			analysisRoutes.PUT("/:analysis_uuid", analysisHandler.UpdateAnalysis)
+			analysisRoutes.DELETE("/:analysis_uuid", analysisHandler.DeleteAnalysis)
+			analysisRoutes.POST("/:analysis_uuid/execute", analysisHandler.ExecuteAnalysis) // 执行分析
 		}
 
 	}

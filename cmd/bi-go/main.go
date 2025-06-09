@@ -18,13 +18,13 @@ import (
 )
 
 func main() {
-	// 1. Load Configuration
+	//  Load Configuration
 	cfg, err := config.LoadConfig("./configs") // Or a different path
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// 2. Initialize Database (GORM)
+	//  Initialize Database (GORM)
 	db, err := database.Connect(cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -36,21 +36,23 @@ func main() {
 	}
 	log.Println("Database connected and migrated successfully.")
 
-	// 3. Initialize Repositories
+	//  Initialize Repositories
 	dsRepo := repository.NewDataSourceRepository(db)
 	jobRepo := repository.NewJobRepository(db)
+	analysisRepo := repository.NewAnalysisRepository(db)
 
-	// 4. Initialize Services
+	//  Initialize Services
 	dsService := service.NewDataSourceService(dsRepo)
 	jobService := service.NewJobService(jobRepo, dsService, cfg.JobConfig)
+	analysisService := service.NewAnalysisService(analysisRepo, jobService)
 
 	jobService.StartWorkers()
 
-	// 5. Setup Router (and inject services into handlers via router setup)
-	router := api.SetupRouter(dsService, jobService)
+	//  Setup Router (and inject services into handlers via router setup)
+	router := api.SetupRouter(dsService, jobService, analysisService)
 	log.Printf("Starting server on port %s", cfg.Server.Port)
 
-	// 6. Start Server
+	//  Start Server
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
