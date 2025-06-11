@@ -6,11 +6,13 @@ import (
 )
 
 type AnalysisRepository interface {
-	CreateAnalysisDefinition(job *models.AnalysisDefinition) error
+	CreateAnalysisDefinition(as *models.AnalysisDefinition) error
 	GetAnalysisDefinitionById(id string) (*models.AnalysisDefinition, error)
-	UpdateAnalysisDefinition(job *models.AnalysisDefinition) error
-	GetAnalysisDefinitions(offset, limit int) (*[]models.AnalysisDefinition, int64, error)
+	UpdateAnalysisDefinition(as *models.AnalysisDefinition) error
+	GetAnalysisDefinitions(offset, limit int) ([]models.AnalysisDefinition, int64, error)
 	GetAnalysisDefinitionByUUID(uuid string) (*models.AnalysisDefinition, error)
+	DeleteByUUID(uuid string) error
+	GetByName(name string) (as *models.AnalysisDefinition, err error)
 }
 
 type analysisRepository struct {
@@ -37,7 +39,7 @@ func (r *analysisRepository) UpdateAnalysisDefinition(job *models.AnalysisDefini
 	return r.db.Save(&job).Error
 }
 
-func (r *analysisRepository) GetAnalysisDefinitions(offset, limit int) (*[]models.AnalysisDefinition, int64, error) {
+func (r *analysisRepository) GetAnalysisDefinitions(offset, limit int) ([]models.AnalysisDefinition, int64, error) {
 	var analysisDefinitions []models.AnalysisDefinition
 	var total int64
 	if err := r.db.Model(&models.AnalysisDefinition{}).Count(&total).Error; err != nil {
@@ -47,12 +49,24 @@ func (r *analysisRepository) GetAnalysisDefinitions(offset, limit int) (*[]model
 	if err := r.db.Model(&models.AnalysisDefinition{}).Offset(offset).Limit(limit).Find(&analysisDefinitions).Error; err != nil {
 		return nil, total, err
 	}
-	return &analysisDefinitions, total, nil
+	return analysisDefinitions, total, nil
 }
 
 func (r *analysisRepository) GetAnalysisDefinitionByUUID(uuid string) (*models.AnalysisDefinition, error) {
 	var analysisDefinition models.AnalysisDefinition
 	if err := r.db.Where("uuid = ?", uuid).First(&analysisDefinition).Error; err != nil {
+		return nil, err
+	}
+	return &analysisDefinition, nil
+}
+
+func (r *analysisRepository) DeleteByUUID(uuid string) error {
+	return r.db.Delete(&models.AnalysisDefinition{UUID: uuid}).Error
+}
+
+func (r *analysisRepository) GetByName(name string) (as *models.AnalysisDefinition, err error) {
+	var analysisDefinition models.AnalysisDefinition
+	if err := r.db.Where("name = ?", name).First(&analysisDefinition).Error; err != nil {
 		return nil, err
 	}
 	return &analysisDefinition, nil

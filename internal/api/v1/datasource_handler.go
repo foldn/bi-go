@@ -42,7 +42,7 @@ func handleError(c *gin.Context, err error, defaultStatusCode int) {
 	c.JSON(defaultStatusCode, ErrorResponse{Error: err.Error()})
 }
 
-// CreateDataSource godoc
+// CreateAnalysis godoc
 // @Summary Create a new data source
 // @Description Add a new data source configuration to the system
 // @Tags datasources
@@ -73,7 +73,7 @@ func (h *DataSourceHandler) CreateDataSource(c *gin.Context) {
 	c.JSON(http.StatusCreated, ds)
 }
 
-// GetDataSources godoc
+// GetAnalysis godoc
 // @Summary Get all data sources
 // @Description Retrieve a paginated list of data sources
 // @Tags datasources
@@ -114,7 +114,7 @@ func (h *DataSourceHandler) GetDataSources(c *gin.Context) {
 	})
 }
 
-// GetDataSourceByID godoc
+// GetAnalysisByID godoc
 // @Summary Get a data source by ID
 // @Description Retrieve a specific data source configuration by its ID
 // @Tags datasources
@@ -140,7 +140,7 @@ func (h *DataSourceHandler) GetDataSourceByID(c *gin.Context) {
 	c.JSON(http.StatusOK, ds)
 }
 
-// UpdateDataSource godoc
+// UpdateAnalysis godoc
 // @Summary Update an existing data source
 // @Description Update an existing data source configuration by its ID
 // @Tags datasources
@@ -179,7 +179,7 @@ func (h *DataSourceHandler) UpdateDataSource(c *gin.Context) {
 	c.JSON(http.StatusOK, ds)
 }
 
-// DeleteDataSource godoc
+// DeleteAnalysis godoc
 // @Summary Delete a data source
 // @Description Delete a data source configuration by its ID
 // @Tags datasources

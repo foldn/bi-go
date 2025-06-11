@@ -51,7 +51,7 @@ func (r *dataSourceRepository) Update(ds *models.DataSource) error {
 }
 
 func (r *dataSourceRepository) Delete(id uint) error {
-	return r.db.Model(&models.DataSource{}).Error
+	return r.db.Delete(&models.DataSource{Model: gorm.Model{ID: id}}).Error
 }
 
 func (r *dataSourceRepository) GetByName(name string) (*models.DataSource, error) {

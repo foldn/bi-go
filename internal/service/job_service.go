@@ -255,7 +255,7 @@ func (s *jobService) executeDataProcessingPipeline(job *models.Job) (interface{}
 	// We need this early to decide the processing path (DB vs CSV)
 	// The job model should have the DataSource preloaded, or we fetch it here.
 	// For this example, let's assume job.DataSource is populated. If not:
-	// currentDsConfig, err := s.dsService.GetDataSourceByID(job.DataSourceID)
+	// currentDsConfig, err := s.dsService.GetAnalysisByID(job.DataSourceID)
 	// if err != nil {
 	//     return nil, "", fmt.Errorf("failed to fetch datasource config %d for job %s: %w", job.DataSourceID, job.UUID, err)
 	// }
