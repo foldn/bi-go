@@ -35,8 +35,8 @@ type ProcessJobInput struct {
 }
 
 type DefinitionInput struct {
-	DataSourceID uint            `json:"datasource_id" binding:"required"`
-	EntityName   string          `json:"entity_name" binding:"required"`
+	DataSourceID uint            `json:"datasourceId" binding:"required"`
+	EntityName   string          `json:"entityName" binding:"required"`
 	Operations   []OperationStep `json:"operations" binding:"required,dive"`
 }
 
@@ -57,7 +57,7 @@ type UpdateAnalysisInput struct {
 // ExecuteAnalysisInput allows overriding some parameters when executing a saved analysis.
 type ExecuteAnalysisInput struct {
 	// Override the output format of the saved analysis for this execution.
-	OutputFormat OutputFormat `json:"output_format,omitempty" binding:"omitempty,oneof=json csv"`
+	OutputFormat OutputFormat `json:"outputFormat,omitempty" binding:"omitempty,oneof=json csv"`
 	// Always run as async when triggered via this endpoint.
 	// ExecutionMode models.ExecutionMode `json:"execution_mode" binding:"omitempty,oneof=sync async"`
 }

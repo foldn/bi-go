@@ -61,7 +61,7 @@ func (r *analysisRepository) GetAnalysisDefinitionByUUID(uuid string) (*models.A
 }
 
 func (r *analysisRepository) DeleteByUUID(uuid string) error {
-	return r.db.Delete(&models.AnalysisDefinition{UUID: uuid}).Error
+	return r.db.Where("uuid = ?", uuid).Delete(&models.AnalysisDefinition{}).Error
 }
 
 func (r *analysisRepository) GetByName(name string) (as *models.AnalysisDefinition, err error) {
