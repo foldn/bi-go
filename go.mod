@@ -6,6 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.35.0
+	github.com/expr-lang/expr v1.17.5
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-sql-driver/mysql v1.9.2
 	github.com/google/uuid v1.6.0

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/expr-lang/expr"
 	"github.com/foldn/bi-go/internal/config"
 	"github.com/foldn/bi-go/internal/models"
 	"github.com/foldn/bi-go/internal/repository"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -243,189 +245,368 @@ func (s *jobService) processJobInBackground(job models.Job) {
 	}
 }
 
+// fetchDataForEntity fetches data for a given datasource and entity, returning it as []map[string]interface{}.
+// This method centralizes the data loading logic used by both the initial pipeline and the 'join' operation.
+func (s *jobService) fetchDataForEntity(dataSourceID uint, entityName string) ([]map[string]interface{}, error) {
+	dsConfig, err := s.dsService.GetDataSourceByID(dataSourceID)
+	if err != nil {
+		return nil, fmt.Errorf("datasource with ID %d not found: %w", dataSourceID, err)
+	}
+
+	log.Printf("Fetching data for entity '%s' from datasource %d (type: %s)", entityName, dataSourceID, dsConfig.Type)
+
+	if dsConfig.Type == models.CSV {
+		// --- CSV Data Fetching ---
+		file, err := os.Open(dsConfig.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open CSV file %s: %w", dsConfig.FilePath, err)
+		}
+		defer file.Close()
+		reader := stdcsv.NewReader(file)
+		header, err := reader.Read()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CSV header from %s: %w", dsConfig.FilePath, err)
+		}
+
+		allRecords, err := reader.ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read all CSV records from %s: %w", dsConfig.FilePath, err)
+		}
+
+		var dataset []map[string]interface{}
+		for _, record := range allRecords {
+			if len(record) != len(header) {
+				log.Printf("Warning: CSV record field count (%d) does not match header field count (%d). Skipping record: %v", len(record), len(header), record)
+				continue
+			}
+			rowData := make(map[string]interface{})
+			for i, colName := range header {
+				rowData[colName] = record[i]
+			}
+			dataset = append(dataset, rowData)
+		}
+		return dataset, nil
+
+	} else if dsConfig.IsDatabase() { // Assume a helper `IsDatabase()` on the model, or list types explicitly
+		// --- Database Data Fetching ---
+		db, dsConfigWithDetails, err := s.dsService.GetDBConnection(dataSourceID)
+		if err != nil {
+			return nil, err
+		}
+		defer db.Close()
+
+		query := fmt.Sprintf("SELECT * FROM %s", dsConfigWithDetails.QuoteIdentifier(entityName))
+		rows, err := db.Query(query)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query entity %s: %w", entityName, err)
+		}
+		defer rows.Close()
+
+		columns, err := rows.Columns()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get columns for entity %s: %w", entityName, err)
+		}
+
+		var dataset []map[string]interface{}
+		for rows.Next() {
+			rowValues := make([]interface{}, len(columns))
+			rowPointers := make([]interface{}, len(columns))
+			for i := range rowValues {
+				rowPointers[i] = &rowValues[i]
+			}
+
+			if err := rows.Scan(rowPointers...); err != nil {
+				return nil, fmt.Errorf("failed to scan row for entity %s: %w", entityName, err)
+			}
+
+			rowData := make(map[string]interface{})
+			for i, colName := range columns {
+				val := rowValues[i]
+				if b, ok := val.([]byte); ok {
+					rowData[colName] = string(b)
+				} else {
+					rowData[colName] = val
+				}
+			}
+			dataset = append(dataset, rowData)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("error during row iteration for entity %s: %w", entityName, err)
+		}
+		return dataset, nil
+	}
+
+	return nil, fmt.Errorf("unsupported data source type for fetching data: %s", dsConfig.Type)
+}
+
+// executeDataProcessingPipeline now uses the refactored fetchDataForEntity.
 func (s *jobService) executeDataProcessingPipeline(job *models.Job) (interface{}, string, error) {
-	log.Printf("Executing pipeline for job %s on %s (DataSource Type: %s)", job.UUID, job.EntityName, job.DataSource.Type) // Assuming job.DataSource is preloaded or fetched
+	log.Printf("Executing pipeline for job %s on %s", job.UUID, job.EntityName)
 
 	var operations []models.OperationStep
 	if err := json.Unmarshal([]byte(job.Operations), &operations); err != nil {
 		return nil, "", fmt.Errorf("failed to unmarshal operations for job %s: %w", job.UUID, err)
 	}
 
-	// Fetch the full DataSource configuration to get all necessary details
-	// We need this early to decide the processing path (DB vs CSV)
-	// The job model should have the DataSource preloaded, or we fetch it here.
-	// For this example, let's assume job.DataSource is populated. If not:
-	// currentDsConfig, err := s.dsService.GetAnalysisByID(job.DataSourceID)
-	// if err != nil {
-	//     return nil, "", fmt.Errorf("failed to fetch datasource config %d for job %s: %w", job.DataSourceID, job.UUID, err)
-	// }
-	// job.DataSource = *currentDsConfig // Attach it to the job object for convenience
+	// 1. Initial Data Fetching using the refactored method
+	currentData, err := s.fetchDataForEntity(job.DataSourceID, job.EntityName)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch initial data for job %s: %w", job.UUID, err)
+	}
+	log.Printf("Job %s: Fetched initial dataset with %d rows.", job.UUID, len(currentData))
 
-	if job.DataSource.Type == models.CSV {
-		// Handle CSV data source
-		return s.executeCSVPipeline(job, &job.DataSource, operations) // Pass the populated DataSource
-	} else if job.DataSource.Type == models.PostgreSQL || job.DataSource.Type == models.MySQL || job.DataSource.Type == models.SQLite || job.DataSource.Type == models.ClickHouse {
-		// Handle Database data sources
-		return s.executeDatabasePipeline(job, &job.DataSource, operations)
-	} else {
-		return nil, "", fmt.Errorf("unsupported data source type '%s' for processing in job %s", job.DataSource.Type, job.UUID)
+	// 2. In-Memory Transformation Loop
+	for i, op := range operations {
+		log.Printf("Job %s: Applying operation %d: %s", job.UUID, i+1, op.Type)
+		transformedData, err := s.applyOperation(op, currentData)
+		if err != nil {
+			return nil, "", fmt.Errorf("error applying operation %s for job %s: %w", op.Type, job.UUID, err)
+		}
+		currentData = transformedData
+		log.Printf("Job %s: After operation %s, dataset size: %d", job.UUID, op.Type, len(currentData))
+	}
+
+	// 3. Output Generation (this logic can be refactored into a helper if not already)
+	return s.generateOutput(job, currentData)
+}
+
+// --- 增强 applyOperation ---
+
+// applyOperation dispatches to specific transformation functions, now including advanced ops.
+func (s *jobService) applyOperation(op models.OperationStep, data []map[string]interface{}) ([]map[string]interface{}, error) {
+	if data == nil && op.Type != "join" { // Join is special as it can create the initial dataset
+		return []map[string]interface{}{}, nil
+	}
+	switch op.Type {
+	// --- Existing cases ---
+	case "select_columns":
+		if op.Columns == nil || len(op.Columns) == 0 {
+			return nil, errors.New("select_columns: 'columns' field is required and cannot be empty")
+		}
+		return s.applySelect(op.Columns, data), nil
+	case "filter_rows":
+		if op.Condition == nil {
+			return nil, errors.New("filter_rows: 'condition' field is required")
+		}
+		return s.applyFilter(*op.Condition, data)
+	case "aggregate":
+		if op.Aggregation == nil {
+			return nil, errors.New("aggregate: 'aggregation' field is required")
+		}
+		return s.applyAggregate(*op.Aggregation, data)
+	// --- New cases for Phase 3 ---
+	case "limit_rows":
+		if op.Limit == nil {
+			return nil, errors.New("limit_rows: 'limit' field is required")
+		}
+		return s.applyLimit(*op.Limit, data), nil
+	case "sort_rows":
+		if op.Sort == nil || len(op.Sort) == 0 {
+			return nil, errors.New("sort_rows: 'sort' field is required and cannot be empty")
+		}
+		return s.applySort(op.Sort, data)
+	case "calculate_field":
+		if op.Calculation == nil {
+			return nil, errors.New("calculate_field: 'calculation' field is required")
+		}
+		return s.applyCalculateField(*op.Calculation, data)
+	case "join":
+		if op.Join == nil {
+			return nil, errors.New("join: 'join' field is required")
+		}
+		return s.applyJoin(*op.Join, data) // data is the "left" dataset
+	default:
+		return nil, fmt.Errorf("unknown operation type: %s", op.Type)
 	}
 }
 
-func (s *jobService) executeDatabasePipeline(job *models.Job, dsConfig *models.DataSource, operations []models.OperationStep) (interface{}, string, error) {
-	log.Printf("Executing DATABASE pipeline for job %s on %s (%s)", job.UUID, job.EntityName, dsConfig.Type)
+// --- 新的转换函数实现 ---
 
-	// 1. Get connection to target data source
-	db, fetchedDsConfig, err := s.dsService.GetDBConnection(job.DataSourceID) // Ensure dsConfig from parameter is used or fetchedDsConfig is consistent
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to connect to target datasource %d for job %s: %w", job.DataSourceID, job.UUID, err)
+// applyLimit limits the number of rows in the dataset.
+func (s *jobService) applyLimit(limit int, data []map[string]interface{}) []map[string]interface{} {
+	if limit <= 0 {
+		return []map[string]interface{}{} // Return empty if limit is zero or negative
 	}
-	defer db.Close()
-	// Use fetchedDsConfig (which includes QuoteIdentifier) rather than the potentially simpler job.DataSource
-	// For example: query := fmt.Sprintf("SELECT * FROM %s", fetchedDsConfig.QuoteIdentifier(job.EntityName))
-
-	// 2. Data Fetching (Initial: SELECT * FROM EntityName)
-	// TODO: Optimize to select only necessary columns based on 'operations'
-	// TODO: Implement streaming for large datasets instead of loading all into memory.
-	// Ensure that fetchedDsConfig.QuoteIdentifier method exists and is used for job.EntityName
-	quotedEntityName := fetchedDsConfig.QuoteIdentifier(job.EntityName)
-
-	if quotedEntityName == "" || (quotedEntityName == job.EntityName && (fetchedDsConfig.Type != models.CSV && fetchedDsConfig.Type != "")) {
-		if fetchedDsConfig.Type != models.CSV && fetchedDsConfig.Type != "" { // "" as a catch for uninitialized type
-			log.Printf("Warning: Entity name '%s' for type '%s' was not quoted or quoting was ineffective. Using raw name.", job.EntityName, fetchedDsConfig.Type)
-		}
+	if limit > len(data) {
+		return data // Return all if limit is greater than dataset size
 	}
-	query := fmt.Sprintf("SELECT * FROM %s", quotedEntityName)
-	log.Printf("Job %s: Executing query: %s", job.UUID, query)
+	return data[:limit]
+}
 
-	rows, err := db.Query(query)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to query entity %s for job %s: %w", job.EntityName, job.UUID, err)
-	}
-	defer rows.Close()
+// applySort sorts the dataset based on specified columns and orders.
+func (s *jobService) applySort(sortParams []models.SortParam, data []map[string]interface{}) ([]map[string]interface{}, error) {
+	sort.Slice(data, func(i, j int) bool {
+		for _, p := range sortParams {
+			valI := data[i][p.Column]
+			valJ := data[j][p.Column]
 
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to get columns for job %s: %w", job.UUID, err)
-	}
+			// Default to ascending order if not specified
+			order := strings.ToUpper(p.Order)
+			if order == "" {
+				order = "ASC"
+			}
 
-	var dataset []map[string]interface{}
-	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
-		rowPointers := make([]interface{}, len(columns))
-		for i := range rowValues {
-			rowPointers[i] = &rowValues[i]
-		}
+			// Handle nil values (nil is considered "less than" any other value)
+			if valI == nil && valJ != nil {
+				return order == "ASC"
+			}
+			if valI != nil && valJ == nil {
+				return order == "DESC"
+			}
+			if valI == nil && valJ == nil {
+				continue
+			}
 
-		if err := rows.Scan(rowPointers...); err != nil {
-			return nil, "", fmt.Errorf("failed to scan row for job %s: %w", job.UUID, err)
-		}
+			// Compare based on type
+			numI, iIsNum := convertToFloat64(valI)
+			numJ, jIsNum := convertToFloat64(valJ)
 
-		rowData := make(map[string]interface{})
-		for i, colName := range columns {
-			val := rowValues[i]
-			if b, ok := val.([]byte); ok {
-				rowData[colName] = string(b)
-			} else {
-				rowData[colName] = val
+			// If both are numbers, compare numerically
+			if iIsNum && jIsNum {
+				if numI != numJ {
+					if order == "ASC" {
+						return numI < numJ
+					}
+					return numI > numJ
+				}
+				continue // If equal, move to next sort criterion
+			}
+
+			// Otherwise, compare as strings
+			strI := fmt.Sprintf("%v", valI)
+			strJ := fmt.Sprintf("%v", valJ)
+			if strI != strJ {
+				if order == "ASC" {
+					return strI < strJ
+				}
+				return strI > strJ
 			}
 		}
-		dataset = append(dataset, rowData)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("error during row iteration for job %s: %w", job.UUID, err)
-	}
-	log.Printf("Job %s: Fetched %d rows from %s.", job.UUID, len(dataset), job.EntityName)
-
-	// 3. In-Memory Transformation Loop (This part is common)
-	currentData := dataset
-	for i, op := range operations {
-		log.Printf("Job %s: Applying operation %d: %s to DB data", job.UUID, i+1, op.Type)
-		transformedData, err := s.applyOperation(op, currentData) // Common transformation logic
-		if err != nil {
-			return nil, "", fmt.Errorf("error applying operation %s for job %s: %w", op.Type, job.UUID, err)
-		}
-		currentData = transformedData
-		log.Printf("Job %s: After operation %s, DB dataset size: %d", job.UUID, op.Type, len(currentData))
-	}
-
-	// 4. Output Generation (This part is common)
-	return s.generateOutput(job, currentData)
+		return false // All sort criteria are equal
+	})
+	return data, nil
 }
 
-// New function to handle CSV-specific pipeline
-func (s *jobService) executeCSVPipeline(job *models.Job, dsConfig *models.DataSource, operations []models.OperationStep) (interface{}, string, error) {
-	log.Printf("Executing CSV pipeline for job %s on file %s", job.UUID, dsConfig.FilePath)
-
-	if dsConfig.FilePath == "" {
-		return nil, "", fmt.Errorf("CSV data source for job %s has no FilePath defined", job.UUID)
+// applyCalculateField adds a new column based on an expression.
+func (s *jobService) applyCalculateField(calc models.CalcParams, data []map[string]interface{}) ([]map[string]interface{}, error) {
+	// If there's no data, there's nothing to calculate.
+	if len(data) == 0 {
+		return data, nil
 	}
 
-	// 1. Data Fetching from CSV
-	file, err := os.Open(dsConfig.FilePath)
+	// --- CORRECTED LOGIC ---
+	// Compile the expression once for performance.
+	// To do this correctly, we provide the first row of our data as an environment "schema".
+	// This tells the compiler what variables to expect and what their types are.
+	// This assumes all rows in the dataset have a consistent structure.
+	program, err := expr.Compile(calc.Expression, expr.Env(data[0]))
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to open CSV file %s for job %s: %w", dsConfig.FilePath, job.UUID, err)
-	}
-	defer file.Close()
-
-	reader := stdcsv.NewReader(file)
-	// Optional: Configure reader.Comma, reader.LazyQuotes, reader.TrimLeadingSpace etc.
-
-	// Read header
-	header, err := reader.Read()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to read CSV header from %s for job %s: %w", dsConfig.FilePath, job.UUID, err)
+		// This is a syntax error in the expression itself, it should fail the entire operation.
+		return nil, fmt.Errorf("failed to compile expression '%s': %w", calc.Expression, err)
 	}
 
-	var dataset []map[string]interface{}
-	for {
-		record, err := reader.Read()
-		if err == stdcsv.ErrFieldCount {
-			log.Printf("Warning: Job %s, CSV %s - bad line, wrong number of fields: %v", job.UUID, dsConfig.FilePath, record)
-			continue // Skip bad line or handle error differently
-		}
-		if err == stdcsv.ErrBareQuote {
-			log.Printf("Warning: Job %s, CSV %s - bad line, bare quote in record: %v", job.UUID, dsConfig.FilePath, record)
-			continue
-		}
-		if err != nil { // Includes io.EOF
-			break
-		}
-
-		if len(record) != len(header) {
-			log.Printf("Warning: Job %s, CSV %s - record field count (%d) does not match header field count (%d). Record: %v",
-				job.UUID, dsConfig.FilePath, len(record), len(header), record)
-			// Policy: skip this row or error out. For now, skip.
-			continue
-		}
-
-		rowData := make(map[string]interface{})
-		for i, colName := range header {
-			rowData[colName] = record[i] // All CSV data initially read as strings
-		}
-		dataset = append(dataset, rowData)
-	}
-	// Check for errors that are not io.EOF after the loop
-	if err != nil && err.Error() != "EOF" { // Check for specific non-EOF errors from reader.Read()
-		return nil, "", fmt.Errorf("error reading CSV data from %s for job %s: %w", dsConfig.FilePath, job.UUID, err)
-	}
-
-	log.Printf("Job %s: Fetched %d rows from CSV %s.", job.UUID, len(dataset), dsConfig.FilePath)
-
-	// 2. In-Memory Transformation Loop (This part is common)
-	currentData := dataset
-	for i, op := range operations {
-		log.Printf("Job %s: Applying operation %d: %s to CSV data", job.UUID, i+1, op.Type)
-		transformedData, err := s.applyOperation(op, currentData) // Common transformation logic
+	for _, row := range data {
+		// Run the compiled program with the current row as the environment.
+		// The keys in the map (column names) become available as variables in the expression.
+		result, err := expr.Run(program, row)
 		if err != nil {
-			return nil, "", fmt.Errorf("error applying operation %s for job %s: %w", op.Type, job.UUID, err)
+			// An error during run could be due to a runtime type mismatch (e.g., 'text' + 1),
+			// or a variable that exists in the first row but not this one.
+			// Policy: We set the result to nil for this row and log the error, allowing the pipeline to continue.
+			log.Printf("Failed to run expression on row: %v. Error: %v. Setting result to nil.", row, err)
+			row[calc.NewColumnName] = nil
+		} else {
+			row[calc.NewColumnName] = result
 		}
-		currentData = transformedData
-		log.Printf("Job %s: After operation %s, CSV dataset size: %d", job.UUID, op.Type, len(currentData))
+	}
+	return data, nil
+}
+
+// applyJoin performs an in-memory hash join between the current dataset (left) and a new one (right).
+func (s *jobService) applyJoin(params models.JoinParams, leftData []map[string]interface{}) ([]map[string]interface{}, error) {
+	if len(params.On) != 1 {
+		return nil, errors.New("join currently supports only a single 'on' condition") // Multi-condition join is more complex
+	}
+	joinCondition := params.On[0]
+
+	// 1. Fetch the right-side data
+	rightData, err := s.fetchDataForEntity(params.RightDataSourceID, params.RightEntityName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch right side of join ('%s'): %w", params.RightEntityName, err)
 	}
 
-	// 3. Output Generation (This part is common)
-	return s.generateOutput(job, currentData)
+	// 2. Build a hash map from the right-side data for efficient lookups.
+	// The map key is the value of the join column. The map value is a slice of rows to handle non-unique keys.
+	rightDataMap := make(map[interface{}][]map[string]interface{})
+	for _, rightRow := range rightData {
+		keyVal, ok := rightRow[joinCondition.RightColumn]
+		if !ok {
+			continue
+		} // Skip rows where join key is missing
+		rightDataMap[keyVal] = append(rightDataMap[keyVal], rightRow)
+	}
+
+	var joinedResult []map[string]interface{}
+
+	// 3. Iterate through the left-side data and probe the hash map.
+	for _, leftRow := range leftData {
+		leftKeyVal, ok := leftRow[joinCondition.LeftColumn]
+		if !ok {
+			if params.JoinType == "left" {
+				// For left join, if left key is missing, row still included with null right side.
+				mergedRow := make(map[string]interface{})
+				for k, v := range leftRow {
+					mergedRow[k] = v
+				}
+				// Add nil for all columns from the right side
+				if len(rightData) > 0 {
+					for rightColName := range rightData[0] {
+						mergedRow[params.RightEntityName+"_"+rightColName] = nil
+					}
+				}
+				joinedResult = append(joinedResult, mergedRow)
+			}
+			continue
+		}
+
+		matchingRightRows, found := rightDataMap[leftKeyVal]
+
+		if found {
+			// Inner join or successful left join match
+			for _, rightRow := range matchingRightRows {
+				mergedRow := make(map[string]interface{})
+				// Copy left row data
+				for k, v := range leftRow {
+					mergedRow[k] = v
+				}
+				// Copy and prefix right row data to avoid name collisions
+				for rightColName, rightVal := range rightRow {
+					mergedRow[params.RightEntityName+"_"+rightColName] = rightVal
+				}
+				joinedResult = append(joinedResult, mergedRow)
+			}
+		} else if params.JoinType == "left" {
+			// Left join with no match
+			mergedRow := make(map[string]interface{})
+			for k, v := range leftRow {
+				mergedRow[k] = v
+			}
+			// Add nil for all columns from the right side
+			if len(rightData) > 0 {
+				for rightColName := range rightData[0] {
+					mergedRow[params.RightEntityName+"_"+rightColName] = nil
+				}
+			}
+			joinedResult = append(joinedResult, mergedRow)
+		}
+	}
+
+	// 'right' join is not implemented directly, but can be simulated by swapping left/right and doing a left join.
+	if params.JoinType == "right" {
+		return nil, errors.New("'right' join is not yet implemented; please swap data sources and use 'left' join")
+	}
+
+	return joinedResult, nil
 }
 
 func (s *jobService) generateOutput(job *models.Job, data []map[string]interface{}) (interface{}, string, error) {
@@ -520,32 +701,6 @@ func (s *jobService) generateOutput(job *models.Job, data []map[string]interface
 	log.Printf("Job %s: Result saved to %s", job.UUID, filePath)
 
 	return syncReturnData, filePath, nil
-}
-
-// applyOperation dispatches to specific transformation functions
-func (s *jobService) applyOperation(op models.OperationStep, data []map[string]interface{}) ([]map[string]interface{}, error) {
-	if data == nil { // Can happen if a previous op resulted in empty or nil data
-		return []map[string]interface{}{}, nil // Return empty, not nil, to allow subsequent ops if meaningful
-	}
-	switch op.Type {
-	case "select_columns":
-		if op.Columns == nil || len(op.Columns) == 0 {
-			return nil, errors.New("select_columns: 'columns' field is required and cannot be empty")
-		}
-		return s.applySelect(op.Columns, data), nil
-	case "filter_rows":
-		if op.Condition == nil {
-			return nil, errors.New("filter_rows: 'condition' field is required")
-		}
-		return s.applyFilter(*op.Condition, data)
-	case "aggregate":
-		if op.Aggregation == nil {
-			return nil, errors.New("aggregate: 'aggregation' field is required")
-		}
-		return s.applyAggregate(*op.Aggregation, data)
-	default:
-		return nil, fmt.Errorf("unknown operation type: %s", op.Type)
-	}
 }
 
 func (s *jobService) applySelect(columns []string, data []map[string]interface{}) []map[string]interface{} {

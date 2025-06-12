@@ -18,6 +18,7 @@ import (
 )
 
 func main() {
+
 	//  Load Configuration
 	cfg, err := config.LoadConfig("./configs") // Or a different path
 	if err != nil {

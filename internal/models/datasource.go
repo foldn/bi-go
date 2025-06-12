@@ -53,3 +53,7 @@ func (ds *DataSource) QuoteIdentifier(name string) string {
 		return name
 	}
 }
+
+func (ds *DataSource) IsDatabase() bool {
+	return ds.Type == PostgreSQL || ds.Type == MySQL || ds.Type == SQLite || ds.Type == ClickHouse
+}
