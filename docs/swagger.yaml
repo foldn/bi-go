@@ -1,0 +1,938 @@
+basePath: /api/v1
+definitions:
+  github_com_foldn_bi-go_internal_models.AggFunc:
+    properties:
+      alias:
+        type: string
+      column:
+        type: string
+      function:
+        description: Add more as needed
+        enum:
+        - SUM
+        - COUNT
+        - AVG
+        - MIN
+        - MAX
+        type: string
+    required:
+    - alias
+    - column
+    - function
+    type: object
+  github_com_foldn_bi-go_internal_models.Aggregation:
+    properties:
+      aggFunctions:
+        items:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.AggFunc'
+        minItems: 1
+        type: array
+      groupBy:
+        items:
+          type: string
+        type: array
+    required:
+    - aggFunctions
+    - groupBy
+    type: object
+  github_com_foldn_bi-go_internal_models.AnalysisDefinition:
+    properties:
+      createdAt:
+        type: string
+      definition:
+        description: Definition stores the core processing input (DataSourceID, EntityName,
+          Operations) as a JSON string.
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      updatedAt:
+        type: string
+      uuid:
+        type: string
+    type: object
+  github_com_foldn_bi-go_internal_models.CalcParams:
+    properties:
+      expression:
+        type: string
+      newColumnName:
+        type: string
+    required:
+    - expression
+    - newColumnName
+    type: object
+  github_com_foldn_bi-go_internal_models.Condition:
+    properties:
+      column:
+        type: string
+      operator:
+        description: Add more as needed
+        type: string
+      value:
+        description: Value can be string, number, bool, []interface{} for IN/NOT IN
+    required:
+    - column
+    - operator
+    type: object
+  github_com_foldn_bi-go_internal_models.CreateAnalysisInput:
+    properties:
+      definition:
+        $ref: '#/definitions/github_com_foldn_bi-go_internal_models.DefinitionInput'
+      description:
+        type: string
+      name:
+        type: string
+    required:
+    - definition
+    - name
+    type: object
+  github_com_foldn_bi-go_internal_models.CreateDataSourceInput:
+    properties:
+      dbName:
+        type: string
+      description:
+        type: string
+      filePath:
+        type: string
+      host:
+        type: string
+      name:
+        type: string
+      otherParams:
+        type: string
+      password:
+        type: string
+      port:
+        type: string
+      type:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.DataSourceType'
+        enum:
+        - postgresql
+        - mysql
+        - csv
+      username:
+        type: string
+    required:
+    - name
+    - type
+    type: object
+  github_com_foldn_bi-go_internal_models.DataSource:
+    properties:
+      createdAt:
+        type: string
+      dbname:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      description:
+        type: string
+      filePath:
+        type: string
+      host:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      otherParams:
+        type: string
+      password:
+        type: string
+      port:
+        type: string
+      type:
+        $ref: '#/definitions/github_com_foldn_bi-go_internal_models.DataSourceType'
+      updatedAt:
+        type: string
+      username:
+        type: string
+    type: object
+  github_com_foldn_bi-go_internal_models.DataSourceType:
+    enum:
+    - postgresql
+    - mysql
+    - csv
+    - clickhouse
+    - sqlite
+    type: string
+    x-enum-varnames:
+    - PostgreSQL
+    - MySQL
+    - CSV
+    - ClickHouse
+    - SQLite
+  github_com_foldn_bi-go_internal_models.DefinitionInput:
+    properties:
+      datasourceId:
+        type: integer
+      entityName:
+        type: string
+      operations:
+        items:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.OperationStep'
+        type: array
+    required:
+    - datasourceId
+    - entityName
+    - operations
+    type: object
+  github_com_foldn_bi-go_internal_models.ExecutionMode:
+    enum:
+    - sync
+    - async
+    type: string
+    x-enum-varnames:
+    - ExecutionModeSync
+    - ExecutionModeAsync
+  github_com_foldn_bi-go_internal_models.Job:
+    properties:
+      completedAt:
+        type: string
+      createdAt:
+        type: string
+      dataSource:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.DataSource'
+        description: GORM 关联
+      dataSourceID:
+        type: integer
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      entityName:
+        type: string
+      executionMode:
+        $ref: '#/definitions/github_com_foldn_bi-go_internal_models.ExecutionMode'
+      id:
+        type: integer
+      operations:
+        description: JSON marshalled operations
+        type: string
+      outputFormat:
+        $ref: '#/definitions/github_com_foldn_bi-go_internal_models.OutputFormat'
+      resultMessage:
+        type: string
+      resultPath:
+        type: string
+      startedAt:
+        type: string
+      status:
+        $ref: '#/definitions/github_com_foldn_bi-go_internal_models.JobStatus'
+      updatedAt:
+        type: string
+      uuid:
+        type: string
+    type: object
+  github_com_foldn_bi-go_internal_models.JobStatus:
+    enum:
+    - PENDING
+    - RUNNING
+    - COMPLETED
+    - FAILED
+    - CANCELLED
+    type: string
+    x-enum-varnames:
+    - JobStatusPending
+    - JobStatusRunning
+    - JobStatusCompleted
+    - JobStatusFailed
+    - JobStatusCancelled
+  github_com_foldn_bi-go_internal_models.JobStatusOutput:
+    properties:
+      completedAt:
+        type: string
+      createdAt:
+        type: string
+      outputFormat:
+        $ref: '#/definitions/github_com_foldn_bi-go_internal_models.OutputFormat'
+      resultMessage:
+        type: string
+      resultPath:
+        type: string
+      startedAt:
+        type: string
+      status:
+        $ref: '#/definitions/github_com_foldn_bi-go_internal_models.JobStatus'
+      uuid:
+        type: string
+    type: object
+  github_com_foldn_bi-go_internal_models.JoinOn:
+    properties:
+      leftColumn:
+        type: string
+      rightColumn:
+        type: string
+    required:
+    - leftColumn
+    - rightColumn
+    type: object
+  github_com_foldn_bi-go_internal_models.JoinParams:
+    properties:
+      joinType:
+        description: Starting with inner and left join
+        enum:
+        - inner
+        - left
+        type: string
+      "on":
+        items:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.JoinOn'
+        minItems: 1
+        type: array
+      rightDatasourceId:
+        type: integer
+      rightEntityName:
+        type: string
+    required:
+    - joinType
+    - "on"
+    - rightDatasourceId
+    - rightEntityName
+    type: object
+  github_com_foldn_bi-go_internal_models.OperationStep:
+    properties:
+      aggregation:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.Aggregation'
+        description: For aggregate
+      calculation:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.CalcParams'
+        description: For calculate_field
+      columns:
+        description: For select_columns
+        items:
+          type: string
+        type: array
+      condition:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.Condition'
+        description: For filter_rows
+      join:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.JoinParams'
+        description: For join
+      limit:
+        description: For limit_rows
+        type: integer
+      sort:
+        description: For sort_rows
+        items:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.SortParam'
+        type: array
+      type:
+        enum:
+        - select_columns
+        - filter_rows
+        - aggregate
+        - join
+        - calculate_field
+        - sort_rows
+        - limit_rows
+        type: string
+    required:
+    - type
+    type: object
+  github_com_foldn_bi-go_internal_models.OutputFormat:
+    enum:
+    - json
+    - csv
+    type: string
+    x-enum-varnames:
+    - OutputFormatJSON
+    - OutputFormatCSV
+  github_com_foldn_bi-go_internal_models.PaginatedJobResultOutput:
+    properties:
+      data:
+        description: Could be []map[string]interface{} or a message
+      filePath:
+        description: Path to download if result is a file
+        type: string
+      isFile:
+        type: boolean
+      outputFormat:
+        $ref: '#/definitions/github_com_foldn_bi-go_internal_models.OutputFormat'
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  github_com_foldn_bi-go_internal_models.ProcessJobInput:
+    properties:
+      datasourceId:
+        type: integer
+      entityName:
+        type: string
+      executionMode:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.ExecutionMode'
+        enum:
+        - sync
+        - async
+      operations:
+        description: dive ensures nested validation
+        items:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.OperationStep'
+        type: array
+      outputFormat:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.OutputFormat'
+        enum:
+        - json
+        - csv
+    required:
+    - datasourceId
+    - entityName
+    - operations
+    type: object
+  github_com_foldn_bi-go_internal_models.SortParam:
+    properties:
+      column:
+        type: string
+      order:
+        enum:
+        - ASC
+        - DESC
+        type: string
+    required:
+    - column
+    type: object
+  github_com_foldn_bi-go_internal_models.UpdateDataSourceInput:
+    properties:
+      dbName:
+        type: string
+      description:
+        type: string
+      filePath:
+        type: string
+      host:
+        type: string
+      name:
+        description: Use pointers for optional updates
+        type: string
+      otherParams:
+        type: string
+      password:
+        type: string
+      port:
+        type: string
+      type:
+        allOf:
+        - $ref: '#/definitions/github_com_foldn_bi-go_internal_models.DataSourceType'
+        enum:
+        - postgresql
+        - mysql
+        - csv
+        - clickhouse
+        - sqlite
+      username:
+        type: string
+    type: object
+  gorm.DeletedAt:
+    properties:
+      time:
+        type: string
+      valid:
+        description: Valid is true if Time is not NULL
+        type: boolean
+    type: object
+  internal_api_v1.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+    url: http://www.example.com/support
+  description: 这是一个基于Go语言的数据处理与分析平台API服务.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://example.com/terms/
+  title: 数据处理平台 API
+  version: "1.0"
+paths:
+  /analysis:
+    get:
+      description: Retrieve a paginated list of analysis definition
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data, total, page, pageSize
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Get all analysis definition
+      tags:
+      - analysis
+    post:
+      consumes:
+      - application/json
+      description: Add a new Analysis Definition configuration to the system
+      parameters:
+      - description: Data Source Configuration
+        in: body
+        name: Analysis
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.CreateAnalysisInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.AnalysisDefinition'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Create a new Analysis Definition
+      tags:
+      - analysis
+  /analysis/{analysis_uuid}:
+    get:
+      description: Retrieve a specific analysis definition configuration by its UUID
+      parameters:
+      - description: analysis definition UUID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.AnalysisDefinition'
+        "404":
+          description: Data source not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Get a analysis definition by UUID
+      tags:
+      - analysis
+    put:
+      consumes:
+      - application/json
+      description: Update an existing analysis definition  configuration by its UUID
+      parameters:
+      - description: analysis definition UUID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: analysis definition Configuration Update
+        in: body
+        name: datasource
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.UpdateDataSourceInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.AnalysisDefinition'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "404":
+          description: Data source not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Update an existing analysis definition
+      tags:
+      - analysis
+  /analysis/{analysis_uuid}/execute:
+    post:
+      description: Creates a new data processing job by uuid.
+      parameters:
+      - description: analysis definition UUID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.Job'
+        "400":
+          description: Invalid ID format
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "404":
+          description: Data source not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Error fetching schema
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: submit an analysis definition
+      tags:
+      - analysis
+  /datasources:
+    get:
+      description: Retrieve a paginated list of data sources
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data, total, page, pageSize
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Get all data sources
+      tags:
+      - datasources
+    post:
+      consumes:
+      - application/json
+      description: Add a new data source configuration to the system
+      parameters:
+      - description: Data Source Configuration
+        in: body
+        name: datasource
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.CreateDataSourceInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.DataSource'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Create a new data source
+      tags:
+      - datasources
+  /datasources/{id}:
+    delete:
+      description: Delete a data source configuration by its ID
+      parameters:
+      - description: Data Source ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Successfully deleted
+        "404":
+          description: Data source not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Delete a data source
+      tags:
+      - datasources
+    get:
+      description: Retrieve a specific data source configuration by its ID
+      parameters:
+      - description: Data Source ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.DataSource'
+        "404":
+          description: Data source not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Get a data source by ID
+      tags:
+      - datasources
+    put:
+      consumes:
+      - application/json
+      description: Update an existing data source configuration by its ID
+      parameters:
+      - description: Data Source ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Data Source Configuration Update
+        in: body
+        name: datasource
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.UpdateDataSourceInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.DataSource'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "404":
+          description: Data source not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Update an existing data source
+      tags:
+      - datasources
+  /datasources/{id}/schema:
+    get:
+      description: Retrieve the top-level schema (e.g., list of tables) of a data
+        source
+      parameters:
+      - description: Data Source ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Schema Information
+          schema: {}
+        "400":
+          description: Invalid ID format
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "404":
+          description: Data source not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Error fetching schema
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Get schema of a data source
+      tags:
+      - datasources
+  /datasources/{id}/schema/{entity_name}:
+    get:
+      description: Retrieve the schema (e.g., columns and types) of a specific table
+        or entity
+      parameters:
+      - description: Data Source ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Entity Name (e.g., table name)
+        in: path
+        name: entity_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Entity Schema Information
+          schema: {}
+        "400":
+          description: Invalid ID or entity name
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "404":
+          description: Data source or entity not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Error fetching entity schema
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Get schema of a specific entity within a data source
+      tags:
+      - datasources
+  /jobs/{job_uuid}/result:
+    get:
+      description: Retrieves the result of a completed job. If the result is a file,
+        it will be served for download.
+      parameters:
+      - description: Job UUID
+        in: path
+        name: job_uuid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: File download if output is CSV or large JSON file
+        "400":
+          description: Invalid Job UUID
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "404":
+          description: Job or result not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "409":
+          description: Job not completed or failed
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Get the result of a completed job
+      tags:
+      - jobs
+  /jobs/{job_uuid}/status:
+    get:
+      description: Retrieves the current status and details of a submitted job by
+        its UUID.
+      parameters:
+      - description: Job UUID
+        in: path
+        name: job_uuid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.JobStatusOutput'
+        "400":
+          description: Invalid Job UUID
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "404":
+          description: Job not found
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Get the status of a job
+      tags:
+      - jobs
+  /jobs/process:
+    post:
+      consumes:
+      - application/json
+      description: Creates and queues a new data processing job. Can run in sync or
+        async mode.
+      parameters:
+      - description: Job Processing Input
+        in: body
+        name: job_input
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_foldn_bi-go_internal_models.ProcessJobInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Sync execution: Job details, result might be in response if
+            small JSON'
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.Job'
+        "202":
+          description: 'Async execution: Job details, job accepted for processing'
+          schema:
+            $ref: '#/definitions/github_com_foldn_bi-go_internal_models.Job'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_api_v1.ErrorResponse'
+      summary: Submit a new data processing job
+      tags:
+      - jobs
+schemes:
+- http
+- https
+swagger: "2.0"

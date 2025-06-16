@@ -42,13 +42,13 @@ func handleError(c *gin.Context, err error, defaultStatusCode int) {
 	c.JSON(defaultStatusCode, ErrorResponse{Error: err.Error()})
 }
 
-// CreateAnalysis godoc
+// CreateDataSource godoc
 // @Summary Create a new data source
 // @Description Add a new data source configuration to the system
 // @Tags datasources
 // @Accept  json
 // @Produce  json
-// @Param   datasource  body   service.CreateDataSourceInput  true  "Data Source Configuration"
+// @Param   datasource  body   models.CreateDataSourceInput  true  "Data Source Configuration"
 // @Success 201 {object} models.DataSource
 // @Failure 400 {object} ErrorResponse "Invalid input"
 // @Failure 500 {object} ErrorResponse "Internal server error"
@@ -73,7 +73,7 @@ func (h *DataSourceHandler) CreateDataSource(c *gin.Context) {
 	c.JSON(http.StatusCreated, ds)
 }
 
-// GetAnalysis godoc
+// GetDataSources godoc
 // @Summary Get all data sources
 // @Description Retrieve a paginated list of data sources
 // @Tags datasources
@@ -114,7 +114,7 @@ func (h *DataSourceHandler) GetDataSources(c *gin.Context) {
 	})
 }
 
-// GetAnalysisByID godoc
+// GetDataSourceByID godoc
 // @Summary Get a data source by ID
 // @Description Retrieve a specific data source configuration by its ID
 // @Tags datasources
@@ -140,14 +140,14 @@ func (h *DataSourceHandler) GetDataSourceByID(c *gin.Context) {
 	c.JSON(http.StatusOK, ds)
 }
 
-// UpdateAnalysis godoc
+// UpdateDataSource godoc
 // @Summary Update an existing data source
 // @Description Update an existing data source configuration by its ID
 // @Tags datasources
 // @Accept  json
 // @Produce  json
 // @Param   id   path   int  true  "Data Source ID"
-// @Param   datasource  body   service.UpdateDataSourceInput  true  "Data Source Configuration Update"
+// @Param   datasource  body   models.UpdateDataSourceInput  true  "Data Source Configuration Update"
 // @Success 200 {object} models.DataSource
 // @Failure 400 {object} ErrorResponse "Invalid input"
 // @Failure 404 {object} ErrorResponse "Data source not found"
@@ -179,7 +179,7 @@ func (h *DataSourceHandler) UpdateDataSource(c *gin.Context) {
 	c.JSON(http.StatusOK, ds)
 }
 
-// DeleteAnalysis godoc
+// DeleteDataSource godoc
 // @Summary Delete a data source
 // @Description Delete a data source configuration by its ID
 // @Tags datasources

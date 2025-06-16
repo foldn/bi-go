@@ -17,10 +17,25 @@ import (
 	"syscall"
 )
 
+// @title           数据处理平台 API
+// @version         1.0
+// @description     这是一个基于Go语言的数据处理与分析平台API服务.
+// @termsOfService  http://example.com/terms/
+//
+// @contact.name   API Support
+// @contact.url    http://www.example.com/support
+// @contact.email  support@example.com
+//
+// @license.name   Apache 2.0
+// @license.url    http://www.apache.org/licenses/LICENSE-2.0.html
+//
+// @host            localhost:8080
+// @BasePath        /api/v1
+// @schemes         http https
 func main() {
 
 	//  Load Configuration
-	cfg, err := config.LoadConfig("./configs") // Or a different path
+	cfg, err := config.LoadConfig("./configs")
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
@@ -31,7 +46,7 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	// Auto-migrate schema
-	err = database.AutoMigrate(db) // Pass the *gorm.DB instance
+	err = database.AutoMigrate(db)
 	if err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}

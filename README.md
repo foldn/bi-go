@@ -131,8 +131,8 @@ go build -o bin/bi-go ./cmd/bi-go
     1.  **API版本控制:** (例如 `/api/v2/...`)
     2.  **认证与授权:** 实现API Key或OAuth 2.0认证 (Gin中间件)，以及RBAC。
     3.  **输入校验与错误处理:** (Gin的请求绑定与校验) 完善的校验和标准化的错误响应。
-    4.  **速率限制与配额:** (Gin中间件) 防止API滥用。
-    5.  **性能监控与日志:** 集成Prometheus、结构化日志 (Gin中间件记录请求日志)、`pprof`。
+  4.  **速率限制与配额:** (Gin中间件) 防止API滥用。
+  5.  **性能监控与日志:** 集成Prometheus、结构化日志 (Gin中间件记录请求日志)、`pprof`。
     6.  **查询优化:** 下推操作到数据库、优化内存算法。GORM的 Preload, Joins, Smart Select Fields 等特性。
     7.  **可配置的数据输出格式:** 支持Parquet, Arrow IPC等。
     8.  **API文档:** 使用OpenAPI (Swagger) 规范 (例如 `swaggo/gin-swagger`)。

@@ -1,0 +1,1393 @@
+{
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "这是一个基于Go语言的数据处理与分析平台API服务.",
+        "title": "数据处理平台 API",
+        "termsOfService": "http://example.com/terms/",
+        "contact": {
+            "name": "API Support",
+            "url": "http://www.example.com/support",
+            "email": "support@example.com"
+        },
+        "license": {
+            "name": "Apache 2.0",
+            "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api/v1",
+    "paths": {
+        "/analysis": {
+            "get": {
+                "description": "Retrieve a paginated list of analysis definition",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analysis"
+                ],
+                "summary": "Get all analysis definition",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Number of items per page",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "data, total, page, pageSize",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Add a new Analysis Definition configuration to the system",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analysis"
+                ],
+                "summary": "Create a new Analysis Definition",
+                "parameters": [
+                    {
+                        "description": "Data Source Configuration",
+                        "name": "Analysis",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.CreateAnalysisInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.AnalysisDefinition"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/analysis/{analysis_uuid}": {
+            "get": {
+                "description": "Retrieve a specific analysis definition configuration by its UUID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analysis"
+                ],
+                "summary": "Get a analysis definition by UUID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "analysis definition UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.AnalysisDefinition"
+                        }
+                    },
+                    "404": {
+                        "description": "Data source not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Update an existing analysis definition  configuration by its UUID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analysis"
+                ],
+                "summary": "Update an existing analysis definition",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "analysis definition UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "analysis definition Configuration Update",
+                        "name": "datasource",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.UpdateDataSourceInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.AnalysisDefinition"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Data source not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/analysis/{analysis_uuid}/execute": {
+            "post": {
+                "description": "Creates a new data processing job by uuid.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analysis"
+                ],
+                "summary": "submit an analysis definition",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "analysis definition UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid ID format",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Data source not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Error fetching schema",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/datasources": {
+            "get": {
+                "description": "Retrieve a paginated list of data sources",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "datasources"
+                ],
+                "summary": "Get all data sources",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Number of items per page",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "data, total, page, pageSize",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Add a new data source configuration to the system",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "datasources"
+                ],
+                "summary": "Create a new data source",
+                "parameters": [
+                    {
+                        "description": "Data Source Configuration",
+                        "name": "datasource",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.CreateDataSourceInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.DataSource"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/datasources/{id}": {
+            "get": {
+                "description": "Retrieve a specific data source configuration by its ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "datasources"
+                ],
+                "summary": "Get a data source by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Data Source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.DataSource"
+                        }
+                    },
+                    "404": {
+                        "description": "Data source not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Update an existing data source configuration by its ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "datasources"
+                ],
+                "summary": "Update an existing data source",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Data Source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data Source Configuration Update",
+                        "name": "datasource",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.UpdateDataSourceInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.DataSource"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Data source not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Delete a data source configuration by its ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "datasources"
+                ],
+                "summary": "Delete a data source",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Data Source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successfully deleted"
+                    },
+                    "404": {
+                        "description": "Data source not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/datasources/{id}/schema": {
+            "get": {
+                "description": "Retrieve the top-level schema (e.g., list of tables) of a data source",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "datasources"
+                ],
+                "summary": "Get schema of a data source",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Data Source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Schema Information",
+                        "schema": {}
+                    },
+                    "400": {
+                        "description": "Invalid ID format",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Data source not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Error fetching schema",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/datasources/{id}/schema/{entity_name}": {
+            "get": {
+                "description": "Retrieve the schema (e.g., columns and types) of a specific table or entity",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "datasources"
+                ],
+                "summary": "Get schema of a specific entity within a data source",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Data Source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity Name (e.g., table name)",
+                        "name": "entity_name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Entity Schema Information",
+                        "schema": {}
+                    },
+                    "400": {
+                        "description": "Invalid ID or entity name",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Data source or entity not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Error fetching entity schema",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/jobs/process": {
+            "post": {
+                "description": "Creates and queues a new data processing job. Can run in sync or async mode.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jobs"
+                ],
+                "summary": "Submit a new data processing job",
+                "parameters": [
+                    {
+                        "description": "Job Processing Input",
+                        "name": "job_input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.ProcessJobInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sync execution: Job details, result might be in response if small JSON",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.Job"
+                        }
+                    },
+                    "202": {
+                        "description": "Async execution: Job details, job accepted for processing",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/jobs/{job_uuid}/result": {
+            "get": {
+                "description": "Retrieves the result of a completed job. If the result is a file, it will be served for download.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jobs"
+                ],
+                "summary": "Get the result of a completed job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job UUID",
+                        "name": "job_uuid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File download if output is CSV or large JSON file"
+                    },
+                    "400": {
+                        "description": "Invalid Job UUID",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Job or result not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Job not completed or failed",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/jobs/{job_uuid}/status": {
+            "get": {
+                "description": "Retrieves the current status and details of a submitted job by its UUID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jobs"
+                ],
+                "summary": "Get the status of a job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job UUID",
+                        "name": "job_uuid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.JobStatusOutput"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Job UUID",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Job not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api_v1.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "github_com_foldn_bi-go_internal_models.AggFunc": {
+            "type": "object",
+            "required": [
+                "alias",
+                "column",
+                "function"
+            ],
+            "properties": {
+                "alias": {
+                    "type": "string"
+                },
+                "column": {
+                    "type": "string"
+                },
+                "function": {
+                    "description": "Add more as needed",
+                    "type": "string",
+                    "enum": [
+                        "SUM",
+                        "COUNT",
+                        "AVG",
+                        "MIN",
+                        "MAX"
+                    ]
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.Aggregation": {
+            "type": "object",
+            "required": [
+                "aggFunctions",
+                "groupBy"
+            ],
+            "properties": {
+                "aggFunctions": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.AggFunc"
+                    }
+                },
+                "groupBy": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.AnalysisDefinition": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "definition": {
+                    "description": "Definition stores the core processing input (DataSourceID, EntityName, Operations) as a JSON string.",
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "$ref": "#/definitions/gorm.DeletedAt"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.CalcParams": {
+            "type": "object",
+            "required": [
+                "expression",
+                "newColumnName"
+            ],
+            "properties": {
+                "expression": {
+                    "type": "string"
+                },
+                "newColumnName": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.Condition": {
+            "type": "object",
+            "required": [
+                "column",
+                "operator"
+            ],
+            "properties": {
+                "column": {
+                    "type": "string"
+                },
+                "operator": {
+                    "description": "Add more as needed",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "Value can be string, number, bool, []interface{} for IN/NOT IN"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.CreateAnalysisInput": {
+            "type": "object",
+            "required": [
+                "definition",
+                "name"
+            ],
+            "properties": {
+                "definition": {
+                    "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.DefinitionInput"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.CreateDataSourceInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "type"
+            ],
+            "properties": {
+                "dbName": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "filePath": {
+                    "type": "string"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "otherParams": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "type": {
+                    "enum": [
+                        "postgresql",
+                        "mysql",
+                        "csv"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.DataSourceType"
+                        }
+                    ]
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.DataSource": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "dbname": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "$ref": "#/definitions/gorm.DeletedAt"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "filePath": {
+                    "type": "string"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "otherParams": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.DataSourceType"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.DataSourceType": {
+            "type": "string",
+            "enum": [
+                "postgresql",
+                "mysql",
+                "csv",
+                "clickhouse",
+                "sqlite"
+            ],
+            "x-enum-varnames": [
+                "PostgreSQL",
+                "MySQL",
+                "CSV",
+                "ClickHouse",
+                "SQLite"
+            ]
+        },
+        "github_com_foldn_bi-go_internal_models.DefinitionInput": {
+            "type": "object",
+            "required": [
+                "datasourceId",
+                "entityName",
+                "operations"
+            ],
+            "properties": {
+                "datasourceId": {
+                    "type": "integer"
+                },
+                "entityName": {
+                    "type": "string"
+                },
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.OperationStep"
+                    }
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.ExecutionMode": {
+            "type": "string",
+            "enum": [
+                "sync",
+                "async"
+            ],
+            "x-enum-varnames": [
+                "ExecutionModeSync",
+                "ExecutionModeAsync"
+            ]
+        },
+        "github_com_foldn_bi-go_internal_models.Job": {
+            "type": "object",
+            "properties": {
+                "completedAt": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "dataSource": {
+                    "description": "GORM 关联",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.DataSource"
+                        }
+                    ]
+                },
+                "dataSourceID": {
+                    "type": "integer"
+                },
+                "deletedAt": {
+                    "$ref": "#/definitions/gorm.DeletedAt"
+                },
+                "entityName": {
+                    "type": "string"
+                },
+                "executionMode": {
+                    "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.ExecutionMode"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "operations": {
+                    "description": "JSON marshalled operations",
+                    "type": "string"
+                },
+                "outputFormat": {
+                    "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.OutputFormat"
+                },
+                "resultMessage": {
+                    "type": "string"
+                },
+                "resultPath": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.JobStatus"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.JobStatus": {
+            "type": "string",
+            "enum": [
+                "PENDING",
+                "RUNNING",
+                "COMPLETED",
+                "FAILED",
+                "CANCELLED"
+            ],
+            "x-enum-varnames": [
+                "JobStatusPending",
+                "JobStatusRunning",
+                "JobStatusCompleted",
+                "JobStatusFailed",
+                "JobStatusCancelled"
+            ]
+        },
+        "github_com_foldn_bi-go_internal_models.JobStatusOutput": {
+            "type": "object",
+            "properties": {
+                "completedAt": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "outputFormat": {
+                    "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.OutputFormat"
+                },
+                "resultMessage": {
+                    "type": "string"
+                },
+                "resultPath": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.JobStatus"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.JoinOn": {
+            "type": "object",
+            "required": [
+                "leftColumn",
+                "rightColumn"
+            ],
+            "properties": {
+                "leftColumn": {
+                    "type": "string"
+                },
+                "rightColumn": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.JoinParams": {
+            "type": "object",
+            "required": [
+                "joinType",
+                "on",
+                "rightDatasourceId",
+                "rightEntityName"
+            ],
+            "properties": {
+                "joinType": {
+                    "description": "Starting with inner and left join",
+                    "type": "string",
+                    "enum": [
+                        "inner",
+                        "left"
+                    ]
+                },
+                "on": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.JoinOn"
+                    }
+                },
+                "rightDatasourceId": {
+                    "type": "integer"
+                },
+                "rightEntityName": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.OperationStep": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "properties": {
+                "aggregation": {
+                    "description": "For aggregate",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.Aggregation"
+                        }
+                    ]
+                },
+                "calculation": {
+                    "description": "For calculate_field",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.CalcParams"
+                        }
+                    ]
+                },
+                "columns": {
+                    "description": "For select_columns",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "condition": {
+                    "description": "For filter_rows",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.Condition"
+                        }
+                    ]
+                },
+                "join": {
+                    "description": "For join",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.JoinParams"
+                        }
+                    ]
+                },
+                "limit": {
+                    "description": "For limit_rows",
+                    "type": "integer"
+                },
+                "sort": {
+                    "description": "For sort_rows",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.SortParam"
+                    }
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "select_columns",
+                        "filter_rows",
+                        "aggregate",
+                        "join",
+                        "calculate_field",
+                        "sort_rows",
+                        "limit_rows"
+                    ]
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.OutputFormat": {
+            "type": "string",
+            "enum": [
+                "json",
+                "csv"
+            ],
+            "x-enum-varnames": [
+                "OutputFormatJSON",
+                "OutputFormatCSV"
+            ]
+        },
+        "github_com_foldn_bi-go_internal_models.PaginatedJobResultOutput": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Could be []map[string]interface{} or a message"
+                },
+                "filePath": {
+                    "description": "Path to download if result is a file",
+                    "type": "string"
+                },
+                "isFile": {
+                    "type": "boolean"
+                },
+                "outputFormat": {
+                    "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.OutputFormat"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.ProcessJobInput": {
+            "type": "object",
+            "required": [
+                "datasourceId",
+                "entityName",
+                "operations"
+            ],
+            "properties": {
+                "datasourceId": {
+                    "type": "integer"
+                },
+                "entityName": {
+                    "type": "string"
+                },
+                "executionMode": {
+                    "enum": [
+                        "sync",
+                        "async"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.ExecutionMode"
+                        }
+                    ]
+                },
+                "operations": {
+                    "description": "dive ensures nested validation",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.OperationStep"
+                    }
+                },
+                "outputFormat": {
+                    "enum": [
+                        "json",
+                        "csv"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.OutputFormat"
+                        }
+                    ]
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.SortParam": {
+            "type": "object",
+            "required": [
+                "column"
+            ],
+            "properties": {
+                "column": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "string",
+                    "enum": [
+                        "ASC",
+                        "DESC"
+                    ]
+                }
+            }
+        },
+        "github_com_foldn_bi-go_internal_models.UpdateDataSourceInput": {
+            "type": "object",
+            "properties": {
+                "dbName": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "filePath": {
+                    "type": "string"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Use pointers for optional updates",
+                    "type": "string"
+                },
+                "otherParams": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "type": {
+                    "enum": [
+                        "postgresql",
+                        "mysql",
+                        "csv",
+                        "clickhouse",
+                        "sqlite"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_foldn_bi-go_internal_models.DataSourceType"
+                        }
+                    ]
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "gorm.DeletedAt": {
+            "type": "object",
+            "properties": {
+                "time": {
+                    "type": "string"
+                },
+                "valid": {
+                    "description": "Valid is true if Time is not NULL",
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_api_v1.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

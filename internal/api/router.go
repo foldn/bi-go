@@ -1,9 +1,12 @@
 package api
 
 import (
+	_ "github.com/foldn/bi-go/docs"
 	"github.com/foldn/bi-go/internal/api/v1"
 	"github.com/foldn/bi-go/internal/service"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func SetupRouter(dsService service.DataSourceService,
@@ -21,6 +24,8 @@ func SetupRouter(dsService service.DataSourceService,
 	dsHandler := v1.NewDataSourceHandler(dsService)
 	jobHandler := v1.NewJobHandler(jobService) // <--- 实例化 JobHandler
 	analysisHandler := v1.NewAnalysisHandler(analysisService)
+
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Base API group
 	apiV1 := router.Group("/api/v1")
@@ -45,10 +50,10 @@ func SetupRouter(dsService service.DataSourceService,
 			jobRoutes.GET("/:job_uuid/result", jobHandler.GetJobResult)
 		}
 
-		analysisRoutes := apiV1.Group("/analyses")
+		analysisRoutes := apiV1.Group("/analysis")
 		{
 			analysisRoutes.POST("", analysisHandler.CreateAnalysis)
-			analysisRoutes.GET("", analysisHandler.GetAnalyses)
+			analysisRoutes.GET("", analysisHandler.GetAnalysis)
 			analysisRoutes.GET("/:analysis_uuid", analysisHandler.GetAnalysisByUUID)
 			analysisRoutes.PUT("/:analysis_uuid", analysisHandler.UpdateAnalysis)
 			analysisRoutes.DELETE("/:analysis_uuid", analysisHandler.DeleteAnalysis)

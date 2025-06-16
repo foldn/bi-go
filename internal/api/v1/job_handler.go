@@ -27,7 +27,7 @@ func NewJobHandler(js service.JobService) *JobHandler {
 // @Tags jobs
 // @Accept  json
 // @Produce  json
-// @Param   job_input  body   service.ProcessJobInput  true  "Job Processing Input"
+// @Param   job_input  body   models.ProcessJobInput  true  "Job Processing Input"
 // @Success 200 {object} models.Job "Sync execution: Job details, result might be in response if small JSON"
 // @Success 202 {object} models.Job "Async execution: Job details, job accepted for processing"
 // @Failure 400 {object} ErrorResponse "Invalid input"
@@ -87,7 +87,7 @@ func (h *JobHandler) SubmitJob(c *gin.Context) {
 // @Tags jobs
 // @Produce  json
 // @Param   job_uuid   path   string  true  "Job UUID"
-// @Success 200 {object} service.JobStatusOutput
+// @Success 200 {object} models.JobStatusOutput
 // @Failure 400 {object} ErrorResponse "Invalid Job UUID"
 // @Failure 404 {object} ErrorResponse "Job not found"
 // @Failure 500 {object} ErrorResponse "Internal server error"
@@ -117,7 +117,7 @@ func (h *JobHandler) GetJobStatus(c *gin.Context) {
 // @Tags jobs
 // @Produce  json
 // @Param   job_uuid   path   string  true  "Job UUID"
-// @Success 200 {object} service.PaginatedJobResultOutput "If JSON and small, data might be in response"
+// @Success 200 {object} models.PaginatedJobResultOutput "If JSON and small, data might be in response"
 // @Success 200 "File download if output is CSV or large JSON file"
 // @Failure 400 {object} ErrorResponse "Invalid Job UUID"
 // @Failure 404 {object} ErrorResponse "Job or result not found"
