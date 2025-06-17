@@ -3,6 +3,7 @@ package api
 import (
 	_ "github.com/foldn/bi-go/docs"
 	"github.com/foldn/bi-go/internal/api/v1"
+	"github.com/foldn/bi-go/internal/middleware"
 	"github.com/foldn/bi-go/internal/service"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -13,12 +14,11 @@ func SetupRouter(dsService service.DataSourceService,
 	jobService service.JobService,
 	analysisService service.AnalysisService) *gin.Engine {
 	// gin.SetMode(gin.ReleaseMode) // Uncomment for production
-	router := gin.Default() // Includes logger and recovery middleware
+	router := gin.New() // Includes logger and recovery middleware
 
-	// TODO: Add CORS middleware if needed
-	// router.Use(cors.Default())
-
-	// TODO: Add any other global middleware (e.g., authentication, custom logging)
+	router.Use(gin.Logger())
+	router.Use(gin.Recovery())
+	router.Use(middleware.ErrorHandler())
 
 	// Instantiate handlers
 	dsHandler := v1.NewDataSourceHandler(dsService)

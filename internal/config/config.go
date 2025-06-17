@@ -3,9 +3,9 @@ package config
 import "github.com/spf13/viper"
 
 type Config struct {
-	Server    ServerConfig
-	Database  DatabaseConfig
-	JobConfig JobConfig
+	Server   ServerConfig   `mapstructure:"server"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Job      JobConfig      `mapstructure:"job"`
 }
 
 type ServerConfig struct {
@@ -22,8 +22,8 @@ type DatabaseConfig struct {
 }
 
 type JobConfig struct {
-	ResultsBasePath string
-	NumWorkers      int
+	ResultsBasePath string `mapstructure:"results_base_path"`
+	NumWorkers      int    `mapstructure:"num_workers"`
 }
 
 func LoadConfig(path string) (config Config, err error) {

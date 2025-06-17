@@ -3,6 +3,7 @@ package v1
 import (
 	"errors"
 	"github.com/foldn/bi-go/internal/models"
+	"github.com/foldn/bi-go/internal/models/apierror"
 	"github.com/foldn/bi-go/internal/service"
 	"net/http"
 	"os"
@@ -36,7 +37,7 @@ func NewJobHandler(js service.JobService) *JobHandler {
 func (h *JobHandler) SubmitJob(c *gin.Context) {
 	var input models.ProcessJobInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		_ = c.Error(apierror.NewBadRequest(err.Error()))
 		return
 	}
 
@@ -53,11 +54,11 @@ func (h *JobHandler) SubmitJob(c *gin.Context) {
 		// Service layer should ideally return specific error types or messages
 		// to allow better status code mapping here.
 		if strings.Contains(err.Error(), "invalid datasource_id") || strings.Contains(err.Error(), "entity") {
-			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			_ = c.Error(apierror.NewBadRequest(err.Error()))
 		} else if strings.Contains(err.Error(), "failed to marshal operations") {
-			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			_ = c.Error(apierror.NewBadRequest(err.Error()))
 		} else {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+			_ = c.Error(err)
 		}
 		return
 	}
@@ -95,16 +96,16 @@ func (h *JobHandler) SubmitJob(c *gin.Context) {
 func (h *JobHandler) GetJobStatus(c *gin.Context) {
 	jobUUID := c.Param("job_uuid")
 	if jobUUID == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Job UUID is required"})
+		_ = c.Error(apierror.NewBadRequest("job_uuid is required"))
 		return
 	}
 
 	status, err := h.jobService.GetJobStatus(jobUUID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Job not found"})
+			_ = c.Error(apierror.ErrNotFound)
 		} else {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+			_ = c.Error(err)
 		}
 		return
 	}
@@ -127,18 +128,18 @@ func (h *JobHandler) GetJobStatus(c *gin.Context) {
 func (h *JobHandler) GetJobResult(c *gin.Context) {
 	jobUUID := c.Param("job_uuid")
 	if jobUUID == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Job UUID is required"})
+		_ = c.Error(apierror.NewBadRequest("job_uuid is required"))
 		return
 	}
 
 	resultOutput, err := h.jobService.GetJobResult(jobUUID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Job not found"})
+			_ = c.Error(apierror.ErrNotFound)
 		} else if strings.Contains(err.Error(), "not completed") {
-			c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
+			_ = c.Error(apierror.New(http.StatusConflict, "job not completed", err.Error()))
 		} else {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+			_ = c.Error(err)
 		}
 		return
 	}
@@ -146,7 +147,7 @@ func (h *JobHandler) GetJobResult(c *gin.Context) {
 	if resultOutput.IsFile && resultOutput.FilePath != "" {
 		// Check if file exists
 		if _, err := os.Stat(resultOutput.FilePath); os.IsNotExist(err) {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Result file not found."})
+			_ = c.Error(apierror.New(http.StatusNotFound, "Result file not found", err.Error()))
 			return
 		}
 

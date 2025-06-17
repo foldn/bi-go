@@ -40,6 +40,8 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
+	log.Printf("Config: %+v", cfg)
+
 	//  Initialize Database (GORM)
 	db, err := database.Connect(cfg.Database)
 	if err != nil {
@@ -59,7 +61,7 @@ func main() {
 
 	//  Initialize Services
 	dsService := service.NewDataSourceService(dsRepo)
-	jobService := service.NewJobService(jobRepo, dsService, cfg.JobConfig)
+	jobService := service.NewJobService(jobRepo, dsService, cfg.Job)
 	analysisService := service.NewAnalysisService(analysisRepo, jobService)
 
 	jobService.StartWorkers()

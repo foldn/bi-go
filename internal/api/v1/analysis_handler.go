@@ -2,10 +2,12 @@ package v1
 
 import (
 	"github.com/foldn/bi-go/internal/models"
+	"github.com/foldn/bi-go/internal/models/apierror"
 	"github.com/foldn/bi-go/internal/service"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 type AnalysisHandler struct {
@@ -30,17 +32,17 @@ func NewAnalysisHandler(as service.AnalysisService) *AnalysisHandler {
 func (h AnalysisHandler) CreateAnalysis(c *gin.Context) {
 	var input models.CreateAnalysisInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		_ = c.Error(apierror.NewBadRequest("invalid input"))
 		return
 	}
 
 	as, err := h.analysisService.CreateAnalysis(input)
 	if err != nil {
 		if err.Error() == "analysis with this name already exists" {
-			c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
+			_ = c.Error(apierror.ErrConflict)
 			return
 		}
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusCreated, as)
@@ -75,7 +77,7 @@ func (h AnalysisHandler) GetAnalysis(c *gin.Context) {
 
 	as, total, err := h.analysisService.GetAnalysis(page, pageSize)
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 
@@ -102,7 +104,7 @@ func (h AnalysisHandler) GetAnalysisByUUID(c *gin.Context) {
 
 	as, err := h.analysisService.GetAnalysisByUUID(asUUID)
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusOK, as)
@@ -126,17 +128,17 @@ func (h AnalysisHandler) UpdateAnalysis(c *gin.Context) {
 
 	var input models.UpdateAnalysisInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		_ = c.Error(apierror.NewBadRequest("invalid input"))
 		return
 	}
 
 	as, err := h.analysisService.UpdateAnalysis(asUUID, input)
 	if err != nil {
 		if err.Error() == "analysis with this name already exists" {
-			c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
+			_ = c.Error(apierror.ErrConflict)
 			return
 		}
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusOK, as)
@@ -157,7 +159,7 @@ func (h AnalysisHandler) DeleteAnalysis(c *gin.Context) {
 
 	err := h.analysisService.DeleteAnalysis(asUUID)
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -179,13 +181,18 @@ func (h AnalysisHandler) ExecuteAnalysis(c *gin.Context) {
 
 	var input models.ExecuteAnalysisInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		_ = c.Error(apierror.NewBadRequest("invalid input"))
 		return
 	}
 
 	job, err := h.analysisService.ExecuteAnalysis(asUUID, input)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		if strings.Contains(err.Error(), "not found") {
+			_ = c.Error(apierror.ErrNotFound)
+		} else if strings.Contains(err.Error(), "failed to parse saved analysis definition") {
+			_ = c.Error(apierror.NewBadRequest("invalid analysis definition"))
+		}
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusAccepted, job)
