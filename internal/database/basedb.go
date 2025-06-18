@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"log"
+	"log/slog"
 	"os"
 	"time"
 )
@@ -48,6 +49,6 @@ func AutoMigrate(db *gorm.DB) error {
 	if err != nil {
 		return fmt.Errorf("failed to auto-migrate database: %w", err)
 	}
-	log.Println("Database migration completed.")
+	slog.Info("Database migration completed.")
 	return nil
 }

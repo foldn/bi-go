@@ -12,6 +12,7 @@ import (
 	"github.com/foldn/bi-go/internal/repository"
 	"github.com/google/uuid"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -68,17 +69,17 @@ func NewJobService(jobRepo repository.JobRepository, dsService DataSourceService
 }
 
 func (s *jobService) StartWorkers() {
-	log.Printf("Starting %d job workers...", s.maxWorkers)
+	slog.Info(fmt.Sprintf("Starting %d job workers...", s.maxWorkers))
 	for i := 0; i < s.maxWorkers; i++ {
 		s.workerWaitGroup.Add(1)
 		go func(workerID int) {
 			defer s.workerWaitGroup.Done()
-			log.Printf("Worker %d started", workerID)
+			slog.Info(fmt.Sprintf("Worker %d started", workerID))
 			for job := range s.workerQueue { // Process jobs from the queue
-				log.Printf("Worker %d: Processing job %s", workerID, job.UUID)
+				slog.Info(fmt.Sprintf("Worker %d: Processing job %s", workerID, job.UUID))
 				s.processJobInBackground(job)
 			}
-			log.Printf("Worker %d stopped", workerID)
+			slog.Info(fmt.Sprintf("Worker %d stopped", workerID))
 		}(i)
 	}
 }

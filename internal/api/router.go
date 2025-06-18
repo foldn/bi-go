@@ -13,10 +13,11 @@ import (
 func SetupRouter(dsService service.DataSourceService,
 	jobService service.JobService,
 	analysisService service.AnalysisService) *gin.Engine {
+
 	// gin.SetMode(gin.ReleaseMode) // Uncomment for production
 	router := gin.New() // Includes logger and recovery middleware
 
-	router.Use(gin.Logger())
+	router.Use(middleware.StructuredLogger())
 	router.Use(gin.Recovery())
 	router.Use(middleware.ErrorHandler())
 

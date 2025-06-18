@@ -1,14 +1,12 @@
 package v1
 
 import (
-	"errors"
 	"github.com/foldn/bi-go/internal/models"
+	"github.com/foldn/bi-go/internal/models/apierror"
 	"github.com/foldn/bi-go/internal/service"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
-
-	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type DataSourceHandler struct {
@@ -22,24 +20,6 @@ func NewDataSourceHandler(s service.DataSourceService) *DataSourceHandler {
 // ErrorResponse represents a generic JSON error response.
 type ErrorResponse struct {
 	Error string `json:"error"`
-}
-
-// Helper to return standardized error responses
-func handleError(c *gin.Context, err error, defaultStatusCode int) {
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Resource not found"})
-		return
-	}
-	// You might want to check for specific validation errors or other known error types
-	// from your service layer to return different status codes (e.g., http.StatusBadRequest)
-	// For now, a simple check for "already exists" or known validation style errors.
-	if err != nil && (err.Error() == "datasource with this name already exists" ||
-		(len(err.Error()) > 0 && err.Error()[0] == '{')) { // Crude check for JSON validation errors from Gin
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	c.JSON(defaultStatusCode, ErrorResponse{Error: err.Error()})
 }
 
 // CreateDataSource godoc
@@ -56,7 +36,7 @@ func handleError(c *gin.Context, err error, defaultStatusCode int) {
 func (h *DataSourceHandler) CreateDataSource(c *gin.Context) {
 	var input models.CreateDataSourceInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		_ = c.Error(apierror.NewBadRequest("invalid input"))
 		return
 	}
 
@@ -64,10 +44,10 @@ func (h *DataSourceHandler) CreateDataSource(c *gin.Context) {
 	if err != nil {
 		// Example of more specific error handling
 		if err.Error() == "datasource with this name already exists" {
-			c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
+			_ = c.Error(apierror.ErrConflict)
 			return
 		}
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusCreated, ds)
@@ -102,7 +82,7 @@ func (h *DataSourceHandler) GetDataSources(c *gin.Context) {
 
 	dataSources, total, err := h.service.GetDataSources(page, pageSize)
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 
@@ -128,13 +108,13 @@ func (h *DataSourceHandler) GetDataSourceByID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid ID format"})
+		_ = c.Error(apierror.NewBadRequest("invalid id"))
 		return
 	}
 
 	ds, err := h.service.GetDataSourceByID(uint(id))
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusOK, ds)
@@ -157,23 +137,24 @@ func (h *DataSourceHandler) UpdateDataSource(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid ID format"})
+		_ = c.Error(apierror.NewBadRequest("invalid id"))
 		return
 	}
 
 	var input models.UpdateDataSourceInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		_ = c.Error(apierror.NewBadRequest("invalid input"))
 		return
 	}
 
 	ds, err := h.service.UpdateDataSource(uint(id), input)
 	if err != nil {
 		if err.Error() == "datasource with this name already exists" {
-			c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
+			_ = c.Error(apierror.ErrConflict)
 			return
 		}
-		handleError(c, err, http.StatusInternalServerError)
+
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusOK, ds)
@@ -193,13 +174,13 @@ func (h *DataSourceHandler) DeleteDataSource(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid ID format"})
+		_ = c.Error(apierror.NewBadRequest("invalid id"))
 		return
 	}
 
 	err = h.service.DeleteDataSource(uint(id))
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -220,20 +201,20 @@ func (h *DataSourceHandler) GetDataSourceSchema(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid ID format"})
+		_ = c.Error(apierror.NewBadRequest("invalid id"))
 		return
 	}
 
 	// Ensure the datasource exists first (optional, service might do this)
 	_, err = h.service.GetDataSourceByID(uint(id))
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError) // Catches Not Found as well
+		_ = c.Error(err)
 		return
 	}
 
 	schema, err := h.service.GetDataSourceSchema(uint(id))
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusOK, schema)
@@ -255,27 +236,26 @@ func (h *DataSourceHandler) GetDataSourceEntitySchema(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid ID format"})
+		_ = c.Error(apierror.NewBadRequest("invalid id"))
 		return
 	}
 
 	entityName := c.Param("entity_name")
 	if entityName == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Entity name cannot be empty"})
+		_ = c.Error(apierror.NewBadRequest("entity name cannot be empty"))
 		return
 	}
 
 	// Ensure the datasource exists first (optional, service might do this)
 	_, err = h.service.GetDataSourceByID(uint(id))
 	if err != nil {
-		handleError(c, err, http.StatusInternalServerError) // Catches Not Found as well
+		_ = c.Error(err)
 		return
 	}
 
 	schema, err := h.service.GetDataSourceEntitySchema(uint(id), entityName)
 	if err != nil {
-		// Potentially more specific error if entity itself is not found vs. general error
-		handleError(c, err, http.StatusInternalServerError)
+		_ = c.Error(err)
 		return
 	}
 	c.JSON(http.StatusOK, schema)

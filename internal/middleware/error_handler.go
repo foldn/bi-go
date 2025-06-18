@@ -12,17 +12,14 @@ import (
 
 func ErrorHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Next() // 先执行后续的 handlers
+		c.Next()
 
-		// c.Next() 执行完毕后，检查上下文中是否有错误
 		if len(c.Errors) == 0 {
 			return
 		}
 
-		// 我们只处理第一个错误
 		err := c.Errors[0].Err
 
-		// 检查是否是我们自定义的 AppError
 		var appErr *apierror.AppError
 		if errors.As(err, &appErr) {
 			c.AbortWithStatusJSON(appErr.StatusCode, v1.APIError{
@@ -32,7 +29,6 @@ func ErrorHandler() gin.HandlerFunc {
 			return
 		}
 
-		// 检查是否是 GORM 的 RecordNotFound 错误
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.AbortWithStatusJSON(http.StatusNotFound, v1.APIError{
 				Code:    "RESOURCE_NOT_FOUND",
