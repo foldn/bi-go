@@ -5,7 +5,9 @@ import (
 	"github.com/foldn/bi-go/internal/api/v1"
 	"github.com/foldn/bi-go/internal/middleware"
 	"github.com/foldn/bi-go/internal/service"
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -20,6 +22,7 @@ func SetupRouter(dsService service.DataSourceService,
 	router.Use(middleware.StructuredLogger())
 	router.Use(gin.Recovery())
 	router.Use(middleware.ErrorHandler())
+	router.Use(middleware.PrometheusMetrics())
 
 	// Instantiate handlers
 	dsHandler := v1.NewDataSourceHandler(dsService)
@@ -27,6 +30,8 @@ func SetupRouter(dsService service.DataSourceService,
 	analysisHandler := v1.NewAnalysisHandler(analysisService)
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Base API group
 	apiV1 := router.Group("/api/v1")
@@ -63,5 +68,7 @@ func SetupRouter(dsService service.DataSourceService,
 
 	}
 
+	// attention:The prod environment cannot be open to pprof
+	pprof.Register(router)
 	return router
 }

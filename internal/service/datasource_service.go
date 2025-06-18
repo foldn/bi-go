@@ -271,7 +271,8 @@ func (s *dataSourceService) GetDataSourceSchema(dataSourceID uint) (interface{},
 	for rows.Next() {
 		var entity models.EntityInfo
 		if err := rows.Scan(&entity.Name, &entity.Type); err != nil {
-			slog.Error(fmt.Sprintf("Error scanning entity row for %s: %v", dsConfig.Type, err))
+			slog.Error(fmt.Sprintf("Error scanning entity row for %s: %v", dsConfig.Type, err),
+				"error", err, "details", fmt.Sprintf("%v", err))
 			continue // Or return error
 		}
 		// Normalize type for ClickHouse, as engine is more specific
@@ -376,7 +377,8 @@ func (s *dataSourceService) GetDataSourceEntitySchema(dataSourceID uint, entityN
 
 	sqlColumnTypes, err := rows.ColumnTypes()
 	if err != nil && dsConfig.Type != models.SQLite { // SQLite PRAGMA doesn't support ColumnTypes well
-		slog.Error(fmt.Sprintf("Warning: Could not get rows.ColumnTypes() for %s: %v", dsConfig.Type, err))
+		slog.Error(fmt.Sprintf("Warning: Could not get rows.ColumnTypes() for %s: %v", dsConfig.Type, err),
+			"error", err, "details", fmt.Sprintf("%v", err))
 	}
 
 	idx := 0
@@ -419,7 +421,8 @@ func (s *dataSourceService) GetDataSourceEntitySchema(dataSourceID uint, entityN
 		}
 
 		if err != nil {
-			slog.Error(fmt.Sprintf("Error scanning column row for %s, table %s: %v", dsConfig.Type, entityName, err))
+			slog.Error(fmt.Sprintf("Error scanning column row for %s, table %s: %v", dsConfig.Type, entityName, err),
+				"error", err, "details", fmt.Sprintf("%v", err))
 			continue
 		}
 
