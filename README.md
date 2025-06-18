@@ -13,7 +13,7 @@
 │       └── main.go         # 主应用程序入口点
 ├── internal/               # 私有应用程序和库代码
 │   ├── api/                # API服务器实现
-│   │   ├── handlers/       # HTTP处理程序
+│   │   ├── v1/       # HTTP处理程序
 │   │   └── routes.go       # 路由定义
 │   ├── config/             # 配置管理
 │   ├── models/             # 数据模型
@@ -143,7 +143,7 @@ go build -o bin/bi-go ./cmd/bi-go
 * **Web框架/HTTP路由:** **Gin-Gonic (`github.com/gin-gonic/gin`)**
 * **ORM:** **GORM (`gorm.io/gorm`)**
 * **数据库驱动 (由GORM管理):** `gorm.io/driver/postgres`, `gorm.io/driver/mysql`, `gorm.io/driver/sqlite`
-* **元数据存储数据库:** PostgreSQL, MySQL, SQLite (选择一个与GORM配合使用)
+* **元数据存储数据库:** MySQL
 * **配置文件管理:** `github.com/spf13/viper`
 * **JSON处理:** `encoding/json` (标准库), Gin内置的JSON处理
 * **任务队列 (可选，用于Job Management):** Go channels + Goroutines (内置), Asynq, RabbitMQ, Kafka

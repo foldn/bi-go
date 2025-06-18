@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"github.com/expr-lang/expr"
 	"github.com/foldn/bi-go/internal/config"
+	metrics "github.com/foldn/bi-go/internal/metrice"
 	"github.com/foldn/bi-go/internal/models"
 	"github.com/foldn/bi-go/internal/repository"
 	"github.com/google/uuid"
-	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -48,7 +48,8 @@ func NewJobService(jobRepo repository.JobRepository, dsService DataSourceService
 		resultsDir = "./job_results_default" // Default if not configured
 	}
 	if err := os.MkdirAll(resultsDir, 0755); err != nil {
-		log.Printf("Warning: could not create job results directory %s: %v", resultsDir, err)
+		slog.Error(fmt.Sprintf("Warning: could not create job results directory %s: %v", resultsDir, err),
+			"error", err, "details", fmt.Sprintf("%v", err))
 		// Potentially fallback or panic if essential
 	}
 
@@ -73,7 +74,9 @@ func (s *jobService) StartWorkers() {
 	for i := 0; i < s.maxWorkers; i++ {
 		s.workerWaitGroup.Add(1)
 		go func(workerID int) {
+			metrics.ActiveBackgroundWorkers.Inc()
 			defer s.workerWaitGroup.Done()
+			defer metrics.ActiveBackgroundWorkers.Dec()
 			slog.Info(fmt.Sprintf("Worker %d started", workerID))
 			for job := range s.workerQueue { // Process jobs from the queue
 				slog.Info(fmt.Sprintf("Worker %d: Processing job %s", workerID, job.UUID))
@@ -133,10 +136,12 @@ func (s *jobService) SubmitJob(input models.ProcessJobInput) (*models.Job, inter
 	if err := s.jobRepo.CreateJob(job); err != nil {
 		return nil, nil, fmt.Errorf("failed to create job record: %w", err)
 	}
-	log.Printf("Job %s created for datasource %d, entity %s. Mode: %s", job.UUID, job.DataSourceID, job.EntityName, job.ExecutionMode)
+	slog.Info(fmt.Sprintf("Job %s created for datasource %d, entity %s. Mode: %s", job.UUID, job.DataSourceID, job.EntityName, job.ExecutionMode),
+		"error", err, "details", fmt.Sprintf("%v", err))
 
 	if job.ExecutionMode == models.ExecutionModeSync {
-		log.Printf("Executing job %s in sync mode.", job.UUID)
+		slog.Info(fmt.Sprintf("Executing job %s in sync mode.", job.UUID),
+			"error", err, "details", fmt.Sprintf("%v", err))
 		// For sync mode, execute directly. Result (data or file path) handled by pipeline.
 		syncResultData, resultFilePath, execErr := s.executeDataProcessingPipeline(job)
 		now := time.Now()
@@ -157,7 +162,8 @@ func (s *jobService) SubmitJob(input models.ProcessJobInput) (*models.Job, inter
 		return job, syncResultData, nil // syncResultData might be the actual data for JSON, or nil if CSV (path used)
 
 	} else { // Async mode
-		log.Printf("Dispatching job %s to async worker queue.", job.UUID)
+		slog.Info(fmt.Sprintf("Dispatching job %s to async worker queue.", job.UUID),
+			"error", err, "details", fmt.Sprintf("%v", err))
 		s.workerQueue <- *job // Send a copy to the queue
 		return job, nil, nil  // Return job details immediately
 	}
@@ -219,30 +225,39 @@ func (s *jobService) processJobInBackground(job models.Job) {
 	job.StartedAt = &now
 	job.Status = models.JobStatusRunning
 	if err := s.jobRepo.UpdateJob(&job); err != nil {
-		log.Printf("Error updating job %s status to RUNNING: %v", job.UUID, err)
+		slog.Error(fmt.Sprintf("Error updating job %s status to RUNNING: %v", job.UUID, err),
+			"error", err, "details", fmt.Sprintf("%v", err))
 		// Potentially requeue or mark as terminally failed if update fails
 		return
 	}
 
-	log.Printf("Starting background execution for job %s", job.UUID)
+	slog.Info(fmt.Sprintf("Starting background execution for job %s", job.UUID))
 	_, resultFilePath, execErr := s.executeDataProcessingPipeline(&job) // We don't need syncData for async
 
 	completedTime := time.Now()
 	job.CompletedAt = &completedTime
 
 	if execErr != nil {
-		log.Printf("Job %s failed: %v", job.UUID, execErr)
+		slog.Error(fmt.Sprintf("Job %s failed: %v", job.UUID, execErr),
+			"error", execErr, "details", fmt.Sprintf("%v", execErr))
 		job.Status = models.JobStatusFailed
 		job.ResultMessage = execErr.Error()
+
+		// add prometheus metrics
+		metrics.JobsProcessedTotal.WithLabelValues("failed").Inc()
 	} else {
-		log.Printf("Job %s completed successfully. Result at: %s", job.UUID, resultFilePath)
+		slog.Info(fmt.Sprintf("Job %s completed successfully. Result at: %s", job.UUID, resultFilePath))
 		job.Status = models.JobStatusCompleted
 		job.ResultPath = resultFilePath
 		job.ResultMessage = "Successfully processed."
+
+		// add prometheus metrics
+		metrics.JobsProcessedTotal.WithLabelValues("completed").Inc()
 	}
 
 	if err := s.jobRepo.UpdateJob(&job); err != nil {
-		log.Printf("Error updating job %s final status: %v", job.UUID, err)
+		slog.Error(fmt.Sprintf("Error updating job %s final status: %v", job.UUID, err),
+			"error", err, "details", fmt.Sprintf("%v", err))
 	}
 }
 
@@ -254,7 +269,7 @@ func (s *jobService) fetchDataForEntity(dataSourceID uint, entityName string) ([
 		return nil, fmt.Errorf("datasource with ID %d not found: %w", dataSourceID, err)
 	}
 
-	log.Printf("Fetching data for entity '%s' from datasource %d (type: %s)", entityName, dataSourceID, dsConfig.Type)
+	slog.Info(fmt.Sprintf("Fetching data for entity '%s' from datasource %d (type: %s)", entityName, dataSourceID, dsConfig.Type))
 
 	if dsConfig.Type == models.CSV {
 		// --- CSV Data Fetching ---
@@ -277,7 +292,8 @@ func (s *jobService) fetchDataForEntity(dataSourceID uint, entityName string) ([
 		var dataset []map[string]interface{}
 		for _, record := range allRecords {
 			if len(record) != len(header) {
-				log.Printf("Warning: CSV record field count (%d) does not match header field count (%d). Skipping record: %v", len(record), len(header), record)
+				slog.Info(fmt.Sprintf("Warning: CSV record field count (%d) does not match header field count (%d). Skipping record: %v",
+					len(record), len(header), record))
 				continue
 			}
 			rowData := make(map[string]interface{})
@@ -342,7 +358,7 @@ func (s *jobService) fetchDataForEntity(dataSourceID uint, entityName string) ([
 
 // executeDataProcessingPipeline now uses the refactored fetchDataForEntity.
 func (s *jobService) executeDataProcessingPipeline(job *models.Job) (interface{}, string, error) {
-	log.Printf("Executing pipeline for job %s on %s", job.UUID, job.EntityName)
+	slog.Info(fmt.Sprintf("Executing pipeline for job %s on %s", job.UUID, job.EntityName))
 
 	var operations []models.OperationStep
 	if err := json.Unmarshal([]byte(job.Operations), &operations); err != nil {
@@ -354,17 +370,17 @@ func (s *jobService) executeDataProcessingPipeline(job *models.Job) (interface{}
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch initial data for job %s: %w", job.UUID, err)
 	}
-	log.Printf("Job %s: Fetched initial dataset with %d rows.", job.UUID, len(currentData))
+	slog.Info(fmt.Sprintf("Job %s: Fetched initial dataset with %d rows.", job.UUID, len(currentData)))
 
 	// 2. In-Memory Transformation Loop
 	for i, op := range operations {
-		log.Printf("Job %s: Applying operation %d: %s", job.UUID, i+1, op.Type)
+		slog.Info(fmt.Sprintf("Job %s: Applying operation %d: %s", job.UUID, i+1, op.Type))
 		transformedData, err := s.applyOperation(op, currentData)
 		if err != nil {
 			return nil, "", fmt.Errorf("error applying operation %s for job %s: %w", op.Type, job.UUID, err)
 		}
 		currentData = transformedData
-		log.Printf("Job %s: After operation %s, dataset size: %d", job.UUID, op.Type, len(currentData))
+		slog.Info(fmt.Sprintf("Job %s: After operation %s, dataset size: %d", job.UUID, op.Type, len(currentData)))
 	}
 
 	// 3. Output Generation (this logic can be refactored into a helper if not already)
@@ -514,7 +530,8 @@ func (s *jobService) applyCalculateField(calc models.CalcParams, data []map[stri
 			// An error during run could be due to a runtime type mismatch (e.g., 'text' + 1),
 			// or a variable that exists in the first row but not this one.
 			// Policy: We set the result to nil for this row and log the error, allowing the pipeline to continue.
-			log.Printf("Failed to run expression on row: %v. Error: %v. Setting result to nil.", row, err)
+			slog.Error(fmt.Sprintf("Failed to run expression on row: %v. Error: %v. Setting result to nil.", row, err),
+				"error", err, "details", fmt.Sprintf("%v", err))
 			row[calc.NewColumnName] = nil
 		} else {
 			row[calc.NewColumnName] = result
@@ -659,7 +676,7 @@ func (s *jobService) generateOutput(job *models.Job, data []map[string]interface
 			}
 			// Fallback if specific order not determined
 			if len(header) == 0 && len(data) > 0 {
-				log.Printf("Job %s: CSV header order fallback to keys of first data row.", job.UUID)
+				slog.Info(fmt.Sprintf("Job %s: CSV header order fallback to keys of first data row.", job.UUID))
 				for key := range data[0] {
 					header = append(header, key)
 				}
@@ -683,7 +700,7 @@ func (s *jobService) generateOutput(job *models.Job, data []map[string]interface
 					}
 				}
 			} else if len(data) > 0 { // Data exists but no header could be determined (should not happen if data[0] has keys)
-				log.Printf("Job %s: CSV data exists but no header determined. Skipping CSV write.", job.UUID)
+				slog.Info(fmt.Sprintf("Job %s: CSV data exists but no header determined. Skipping CSV write.", job.UUID))
 			}
 		}
 		csvWriter.Flush()
@@ -699,7 +716,7 @@ func (s *jobService) generateOutput(job *models.Job, data []map[string]interface
 	if err := os.WriteFile(filePath, outputDataBytes, 0644); err != nil {
 		return nil, "", fmt.Errorf("failed to write result file %s for job %s: %w", filePath, job.UUID, err)
 	}
-	log.Printf("Job %s: Result saved to %s", job.UUID, filePath)
+	slog.Info(fmt.Sprintf("Job %s: Result saved to %s", job.UUID, filePath))
 
 	return syncReturnData, filePath, nil
 }
@@ -739,7 +756,8 @@ func (s *jobService) applyFilter(condition models.Condition, data []map[string]i
 		if err != nil {
 			// Log error or decide if one bad row evaluation fails the whole filter.
 			// For now, let's log and skip the row.
-			log.Printf("Error evaluating filter condition for column %s: %v. Skipping row.", condition.Column, err)
+			slog.Error(fmt.Sprintf("Error evaluating filter condition for column %s: %v. Skipping row.", condition.Column, err),
+				"error", err, "details", fmt.Sprintf("%v", err))
 			continue
 		}
 		if match {
