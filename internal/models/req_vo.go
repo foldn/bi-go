@@ -30,7 +30,7 @@ type ProcessJobInput struct {
 	DataSourceID  uint            `json:"datasourceId" binding:"required"`
 	EntityName    string          `json:"entityName" binding:"required"`
 	Operations    []OperationStep `json:"operations" binding:"required,dive"` // dive ensures nested validation
-	OutputFormat  OutputFormat    `json:"outputFormat" binding:"omitempty,oneof=json csv"`
+	OutputFormat  OutputFormat    `json:"outputFormat" binding:"omitempty,oneof=json csv parquet arrow"`
 	ExecutionMode ExecutionMode   `json:"executionMode" binding:"omitempty,oneof=sync async"`
 }
 

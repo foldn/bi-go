@@ -25,8 +25,10 @@ const (
 type OutputFormat string
 
 const (
-	OutputFormatJSON OutputFormat = "json"
-	OutputFormatCSV  OutputFormat = "csv"
+	OutputFormatJSON    OutputFormat = "json"
+	OutputFormatCSV     OutputFormat = "csv"
+	OutputFormatParquet OutputFormat = "parquet"
+	OutputFormatArrow   OutputFormat = "arrow"
 )
 
 type Job struct {
