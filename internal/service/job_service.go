@@ -17,16 +17,18 @@ import (
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 	"github.com/expr-lang/expr"
 	"github.com/foldn/bi-go/internal/config"
+	"github.com/foldn/bi-go/internal/engine"
 	metrics "github.com/foldn/bi-go/internal/metrice"
 	"github.com/foldn/bi-go/internal/models"
 	"github.com/foldn/bi-go/internal/repository"
+	"github.com/foldn/bi-go/pkg/utils"
 	"github.com/google/uuid"
+	"io"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +39,7 @@ type JobService interface {
 	GetJobStatus(jobUUID string) (*models.JobStatusOutput, error)
 	GetJobResult(jobUUID string) (*models.PaginatedJobResultOutput, error)
 	StartWorkers()
+	FetchDataForEntity(jobUUID string, dataSourceID uint, entityName string, step []models.OperationStep) ([]map[string]interface{}, error)
 }
 
 type jobService struct {
@@ -268,119 +271,357 @@ func (s *jobService) processJobInBackground(job models.Job) {
 	}
 }
 
-// fetchDataForEntity fetches data for a given datasource and entity, returning it as []map[string]interface{}.
-// this method centralizes the data loading logic used by both the initial pipeline and the 'join' operation.
-func (s *jobService) fetchDataForEntity(jobUUID string, dataSourceID uint, entityName string, step []models.OperationStep) ([]map[string]interface{}, error) {
+// fetchDataForStream 启动一个 goroutine 从数据源读取数据并将其发送到 channel
+func (s *jobService) fetchDataForStream(jobUUID string, dataSourceID uint,
+	entityName string,
+	step []models.OperationStep,
+	errc chan<- error) (<-chan engine.Row, error) {
+
 	dsConfig, err := s.dsService.GetDataSourceByID(dataSourceID)
 	if err != nil {
-		return nil, fmt.Errorf("datasource with ID %d not found: %w", dataSourceID, err)
+		return nil, err
 	}
 
-	slog.Info(fmt.Sprintf("Fetching data for entity '%s' from datasource %d (type: %s)", entityName, dataSourceID, dsConfig.Type))
+	out := make(chan engine.Row, 100)
 
-	if dsConfig.Type == models.CSV {
-		// --- CSV Data Fetching ---
-		file, err := os.Open(dsConfig.FilePath)
+	var pushdownSQL string
+	var pushdownArgs []interface{}
+
+	// --- Database Data Fetching ---
+	pushdownOps, inMemoryOps := s.analyzePushdown(step)
+
+	// --- **关键修改点：动态选择 SQL 构建器** ---
+	var builder squirrel.StatementBuilderType
+
+	switch dsConfig.Type {
+	case models.PostgreSQL:
+		builder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+	case models.MySQL, models.ClickHouse, models.SQLite:
+		builder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
+	default:
+		// 如果遇到不支持下推的数据库类型，我们可以选择完全在内存中处理
+		slog.Warn(fmt.Sprintf("Warning: SQL pushdown not supported for database type '%s'. Falling back to in-memory processing for all operations.", dsConfig.Type))
+		// 将所有操作都转为内存中处理
+		inMemoryOps = append(pushdownOps, inMemoryOps...)
+		pushdownOps = nil // 清空下推操作
+	}
+
+	if len(pushdownOps) > 0 {
+		baseQuery := builder.Select().From(dsConfig.QuoteIdentifier(entityName))
+		finalQueryBuilder, err := s.buildSQLQuery(baseQuery, pushdownOps)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open CSV file %s: %w", dsConfig.FilePath, err)
+			//return nil, "", fmt.Errorf("failed to build pushdown query: %w", err)
 		}
-		defer file.Close()
-		reader := stdcsv.NewReader(file)
-		header, err := reader.Read()
+
+		// 生成最终的 SQL 和参数
+		sqlString, args, err := finalQueryBuilder.ToSql()
 		if err != nil {
-			return nil, fmt.Errorf("failed to read CSV header from %s: %w", dsConfig.FilePath, err)
+			//return nil, "", fmt.Errorf("failed to generate SQL from builder: %w", err)
 		}
 
-		allRecords, err := reader.ReadAll()
-		if err != nil {
-			return nil, fmt.Errorf("failed to read all CSV records from %s: %w", dsConfig.FilePath, err)
-		}
+		pushdownSQL = sqlString
+		pushdownArgs = args
+		log.Printf("Job %s: Pushdown query generated successfully.", jobUUID)
+	}
 
-		var dataset []map[string]interface{}
-		for _, record := range allRecords {
-			if len(record) != len(header) {
-				slog.Info(fmt.Sprintf("Warning: CSV record field count (%d) does not match header field count (%d). Skipping record: %v",
-					len(record), len(header), record))
-				continue
-			}
-			rowData := make(map[string]interface{})
-			for i, colName := range header {
-				rowData[colName] = record[i]
-			}
-			dataset = append(dataset, rowData)
-		}
-		return dataset, nil
+	go func() {
+		defer close(out) // 非常重要：完成后关闭 channel，以通知下游处理结束
 
-	} else if dsConfig.IsDatabase() { // Assume a helper `IsDatabase()` on the model, or list types explicitly
-		// --- Database Data Fetching ---
-		pushdownOps, inMemoryOps := s.analyzePushdown(step)
+		if dsConfig.IsDatabase() {
 
-		// --- **关键修改点：动态选择 SQL 构建器** ---
-		var builder squirrel.StatementBuilderType
-
-		switch dsConfig.Type {
-		case models.PostgreSQL:
-			builder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
-		case models.MySQL, models.ClickHouse, models.SQLite:
-			builder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
-		default:
-			// 如果遇到不支持下推的数据库类型，我们可以选择完全在内存中处理
-			slog.Warn(fmt.Sprintf("Warning: SQL pushdown not supported for database type '%s'. Falling back to in-memory processing for all operations.", dsConfig.Type))
-			// 将所有操作都转为内存中处理
-			inMemoryOps = append(pushdownOps, inMemoryOps...)
-			pushdownOps = nil // 清空下推操作
-		}
-
-		if len(pushdownOps) > 0 {
-
-			baseQuery := builder.Select().From(dsConfig.QuoteIdentifier(entityName))
-
-			// 3. 将可下推的操作应用到 SQL 构建器上
-			finalQueryBuilder, errBuild := s.buildSQLQuery(baseQuery, pushdownOps)
-			if errBuild != nil {
-				return nil, fmt.Errorf("failed to build pushdown query: %w", errBuild)
-			}
-
-			// 4. 生成最终的 SQL 和参数
-			sqlString, args, errSql := finalQueryBuilder.ToSql()
-			if errSql != nil {
-				return nil, fmt.Errorf("failed to generate SQL from builder: %w", errSql)
-			}
-			slog.Info(fmt.Sprintf("Job %s: Executing PUSHDOWN query for dialect '%s': %s | Args: %v", jobUUID, dsConfig.Type, sqlString, args))
-
-			// 5. 获取数据库连接并执行优化后的查询
-			db, _, errConn := s.dsService.GetDBConnection(dsConfig.ID)
-			if errConn != nil {
-				return nil, errConn
+			// DB 流式读取
+			db, dsDetails, err := s.dsService.GetDBConnection(dataSourceID)
+			if err != nil {
+				errc <- err
+				return
 			}
 			defer db.Close()
 
-			rows, errQuery := db.Query(sqlString, args...)
-			if errQuery != nil {
-				return nil, fmt.Errorf("failed to execute pushdown query: %w", errQuery)
+			var query string
+			var args []interface{}
+			if pushdownSQL != "" {
+				query = pushdownSQL
+				args = pushdownArgs
+				log.Printf("Data stream source: Executing pushdown query.")
+			} else {
+				query = fmt.Sprintf("SELECT * FROM %s", dsDetails.QuoteIdentifier(entityName))
+				args = nil
+				log.Printf("Data stream source: No pushdown query, executing SELECT *.")
+			}
+			rows, err := db.Query(query, args...)
+			if err != nil {
+				errc <- err
+				return
 			}
 			defer rows.Close()
 
-			// 将查询结果加载到内存
-			return s.scanRowsToMap(rows, entityName)
+			// ... (这里是之前 scanRowsToMap 中的扫描逻辑，但现在是逐行发送)
+			columns, _ := rows.Columns()
+			for rows.Next() {
+				rowValues := make([]interface{}, len(columns))
+				rowPointers := make([]interface{}, len(columns))
+				for i := range rowValues {
+					rowPointers[i] = &rowValues[i]
+				}
+
+				if err := rows.Scan(rowPointers...); err != nil {
+					errc <- fmt.Errorf("failed to scan row: %w", err)
+					return // 遇到扫描错误，终止流
+				}
+
+				rowData := make(engine.Row)
+				for i, colName := range columns {
+					val := rowValues[i]
+					if b, ok := val.([]byte); ok {
+						rowData[colName] = string(b)
+					} else {
+						rowData[colName] = val
+					}
+				}
+				out <- rowData // 将处理好的一行数据发送到 channel
+			}
+			if err = rows.Err(); err != nil {
+				errc <- err
+			}
+
+		} else if dsConfig.Type == models.CSV {
+			// CSV 流式读取
+			file, err := os.Open(dsConfig.FilePath)
+			if err != nil {
+				errc <- err
+				return
+			}
+			defer file.Close()
+
+			reader := stdcsv.NewReader(file)
+			header, _ := reader.Read() // 假设 header 总是存在
+			for {
+				record, err := reader.Read()
+				if err != nil { // 包括 io.EOF
+					if err.Error() != "EOF" {
+						errc <- err
+					}
+					break
+				}
+				if err != nil {
+					errc <- fmt.Errorf("error reading CSV record: %w", err)
+					return // 遇到读取错误，终止流
+				}
+
+				if len(record) != len(header) {
+					slog.Info(fmt.Sprintf("Warning: CSV record has mismatched field count, skipping. Expected %d, got %d.", len(header), len(record)))
+					continue
+				}
+
+				rowData := make(engine.Row)
+				for i, colName := range header {
+					rowData[colName] = record[i]
+				}
+				out <- rowData // 将处理好的一行数据发送到 channel
+			}
 		} else {
-			db, dsConfigWithDetails, err := s.dsService.GetDBConnection(dataSourceID)
-			if err != nil {
-				return nil, err
-			}
-			defer db.Close()
-
-			query := fmt.Sprintf("SELECT * FROM %s", dsConfigWithDetails.QuoteIdentifier(entityName))
-			rows, err := db.Query(query)
-			if err != nil {
-				return nil, fmt.Errorf("failed to query entity %s: %w", entityName, err)
-			}
-			defer rows.Close()
-			return s.scanRowsToMap(rows, entityName)
+			errc <- fmt.Errorf("unsupported data source type for streaming: %s", dsConfig.Type)
 		}
+		slog.Info("Data stream finished.")
+	}()
+
+	return out, nil
+}
+
+// --- 新的流式输出生成函数 ---
+
+// generateOutputFromStream 从 channel 消费数据并生成输出
+func (s *jobService) generateOutputFromStream(job *models.Job, dataStream <-chan engine.Row, errc <-chan error) (interface{}, string, error) {
+	// 1. 准备输出文件
+	fileName := fmt.Sprintf("%s.%s", job.UUID, strings.ToLower(string(job.OutputFormat)))
+	if job.OutputFormat == models.OutputFormatArrow {
+		fileName = fmt.Sprintf("%s.arrow", job.UUID)
+	}
+	filePath := filepath.Join(s.resultsBaseDir, fileName)
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create output file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	// 2. 根据输出格式选择不同的写入策略
+	switch job.OutputFormat {
+	case models.OutputFormatJSON:
+		// 流式写入 JSON 数组
+		if err := s.writeJSONStream(file, dataStream, errc); err != nil {
+			os.Remove(filePath) // 清理失败的文件
+			return nil, "", err
+		}
+	case models.OutputFormatCSV:
+		// 流式写入 CSV 文件
+		if err := s.writeCSVStream(file, dataStream, errc); err != nil {
+			os.Remove(filePath) // 清理失败的文件
+			return nil, "", err
+		}
+	case models.OutputFormatParquet, models.OutputFormatArrow:
+		// 对于 Parquet/Arrow，当前阶段的简化实现是先在内存中聚合 channel 的所有数据
+		// 这是一个务实的折中，因为流式构建这两种格式比较复杂
+		// TODO: 在未来版本中实现真正的流式 Parquet/Arrow 写入器以支持超大数据集
+		var allData []map[string]interface{}
+		for {
+			select {
+			case row, ok := <-dataStream:
+				if !ok { // channel closed
+					dataStream = nil // stop listening to dataStream
+					break
+				}
+				allData = append(allData, row)
+			case err := <-errc:
+				os.Remove(filePath)
+				return nil, "", err
+			}
+			if dataStream == nil {
+				break
+			}
+		}
+
+		// 调用我们之前为批处理实现的 generateOutput 函数（或其核心逻辑）
+		if len(allData) == 0 {
+			slog.Warn(fmt.Sprintf("Job %s: received no data to write for Parquet/Arrow output.", job.UUID))
+			return nil, filePath, nil // 创建一个空文件
+		}
+		// 重用 generateOutput 中的 Parquet/Arrow 写入逻辑
+		// 这里我们简化一下，假设写入逻辑被提取到一个辅助函数中
+		return s.generateAdvancedFormatOutput(job, allData, filePath)
+
+	default:
+		return nil, "", fmt.Errorf("unsupported output format %s", job.OutputFormat)
 	}
 
-	return nil, fmt.Errorf("unsupported data source type for fetching data: %s", dsConfig.Type)
+	// 对于异步文件写入，同步返回结果为 nil
+	return nil, filePath, nil
+}
+
+func (s *jobService) writeJSONStream(writer io.Writer, dataStream <-chan engine.Row, errc <-chan error) error {
+	// 写入 JSON 数组的开头
+	if _, err := writer.Write([]byte("[\n")); err != nil {
+		return err
+	}
+
+	isFirstRow := true
+	encoder := json.NewEncoder(writer)
+	encoder.SetIndent("", "  ") // 格式化输出
+
+	for {
+		select {
+		case row, ok := <-dataStream:
+			if !ok { // Channel 已关闭
+				// 写入 JSON 数组的结尾
+				_, err := writer.Write([]byte("\n]"))
+				return err
+			}
+
+			// 处理逗号分隔
+			if !isFirstRow {
+				if _, err := writer.Write([]byte(",\n")); err != nil {
+					return err
+				}
+			}
+			isFirstRow = false
+
+			// 编码并写入单行数据
+			if err := encoder.Encode(row); err != nil {
+				return fmt.Errorf("failed to encode row to JSON: %w", err)
+			}
+
+		case err := <-errc:
+			// 如果上游发生错误，终止写入
+			return err
+		}
+	}
+}
+
+func (s *jobService) writeCSVStream(writer io.Writer, dataStream <-chan engine.Row, errc <-chan error) error {
+	csvWriter := stdcsv.NewWriter(writer)
+	defer csvWriter.Flush()
+
+	var header []string
+	headerWritten := false
+
+	for {
+		select {
+		case row, ok := <-dataStream:
+			if !ok { // Channel 已关闭
+				return csvWriter.Error()
+			}
+
+			// 从第一行数据中获取并写入 header
+			if !headerWritten {
+				for key := range row {
+					header = append(header, key)
+				}
+				// 排序以保证列序一致
+				sort.Strings(header)
+				if err := csvWriter.Write(header); err != nil {
+					return fmt.Errorf("failed to write CSV header: %w", err)
+				}
+				headerWritten = true
+			}
+
+			// 写入数据行
+			record := make([]string, len(header))
+			for i, key := range header {
+				record[i] = fmt.Sprintf("%v", row[key])
+			}
+			if err := csvWriter.Write(record); err != nil {
+				return fmt.Errorf("failed to write CSV record: %w", err)
+			}
+
+		case err := <-errc:
+			return err
+		}
+	}
+}
+
+// generateAdvancedFormatOutput 是一个示意函数，代表了之前实现的 Parquet/Arrow 写入逻辑
+func (s *jobService) generateAdvancedFormatOutput(job *models.Job, data []map[string]interface{}, filePath string) (interface{}, string, error) {
+	// 将数据转换为 Arrow Record
+	record, err := s.dataToArrowRecord(data)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to convert data to Arrow record: %w", err)
+	}
+	defer record.Release()
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create output file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	if job.OutputFormat == models.OutputFormatParquet {
+		// 写入 Parquet 文件
+		props := parquet.NewWriterProperties(parquet.WithCompression(compress.Codecs.Snappy))
+		writer, err := pqarrow.NewFileWriter(record.Schema(), file, props, pqarrow.NewArrowWriterProperties())
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create Parquet writer: %w", err)
+		}
+		if err := writer.Write(record); err != nil {
+			return nil, "", fmt.Errorf("failed to write Parquet data: %w", err)
+		}
+		if err := writer.Close(); err != nil {
+			return nil, "", fmt.Errorf("failed to close Parquet writer: %w", err)
+		}
+	} else { // Arrow IPC 格式
+		// 写入 Arrow 文件
+		writer, err := ipc.NewFileWriter(file, ipc.WithSchema(record.Schema()))
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create Arrow file writer: %w", err)
+		}
+		if err := writer.Write(record); err != nil {
+			return nil, "", fmt.Errorf("failed to write Arrow data: %w", err)
+		}
+		if err := writer.Close(); err != nil {
+			return nil, "", fmt.Errorf("failed to close Arrow writer: %w", err)
+		}
+	}
+	// 对于文件格式，同步返回 nil 数据，路径在 job 对象中
+	return nil, filePath, nil
 }
 
 // executeDataProcessingPipeline now uses the refactored fetchDataForEntity.
@@ -392,26 +633,61 @@ func (s *jobService) executeDataProcessingPipeline(job *models.Job) (interface{}
 		return nil, "", fmt.Errorf("failed to unmarshal operations for job %s: %w", job.UUID, err)
 	}
 
-	// 1. Initial Data Fetching using the refactored method
-	currentData, err := s.fetchDataForEntity(job.UUID, job.DataSourceID, job.EntityName, operations)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to fetch initial data for job %s: %w", job.UUID, err)
-	}
-	slog.Info(fmt.Sprintf("Job %s: Fetched initial dataset with %d rows.", job.UUID, len(currentData)))
+	//// 1. Initial Data Fetching using the refactored method
+	//currentData, err := s.fetchDataForEntity(job.UUID, job.DataSourceID, job.EntityName, operations)
+	//if err != nil {
+	//	return nil, "", fmt.Errorf("failed to fetch initial data for job %s: %w", job.UUID, err)
+	//}
+	//slog.Info(fmt.Sprintf("Job %s: Fetched initial dataset with %d rows.", job.UUID, len(currentData)))
+	//
+	//// 2. In-Memory Transformation Loop
+	//for i, op := range operations {
+	//	slog.Info(fmt.Sprintf("Job %s: Applying operation %d: %s", job.UUID, i+1, op.Type))
+	//	transformedData, err := s.applyOperation(op, currentData)
+	//	if err != nil {
+	//		return nil, "", fmt.Errorf("error applying operation %s for job %s: %w", op.Type, job.UUID, err)
+	//	}
+	//	currentData = transformedData
+	//	slog.Info(fmt.Sprintf("Job %s: After operation %s, dataset size: %d", job.UUID, op.Type, len(currentData)))
+	//}
+	//
+	//// 3. Output Generation (this logic can be refactored into a helper if not already)
+	//return s.generateOutput(job, currentData)
 
-	// 2. In-Memory Transformation Loop
-	for i, op := range operations {
-		slog.Info(fmt.Sprintf("Job %s: Applying operation %d: %s", job.UUID, i+1, op.Type))
-		transformedData, err := s.applyOperation(op, currentData)
+	// 1. 创建 Streamer 实例列表
+	streamerCtx := engine.StreamerContext{Fetcher: s} // 创建上下文
+	var streamers []engine.Streamer
+	for _, op := range operations {
+		streamer, err := engine.NewStreamer(op, streamerCtx)
 		if err != nil {
-			return nil, "", fmt.Errorf("error applying operation %s for job %s: %w", op.Type, job.UUID, err)
+			return nil, "", fmt.Errorf("failed to create streamer for op type %s: %w", op.Type, err)
 		}
-		currentData = transformedData
-		slog.Info(fmt.Sprintf("Job %s: After operation %s, dataset size: %d", job.UUID, op.Type, len(currentData)))
+		streamers = append(streamers, streamer)
 	}
 
-	// 3. Output Generation (this logic can be refactored into a helper if not already)
-	return s.generateOutput(job, currentData)
+	// 2. 创建初始数据流
+	errc := make(chan error, len(streamers)+1) // 错误 channel
+	dataStream, err := s.fetchDataForStream(job.UUID, job.DataSourceID, job.EntityName, operations, errc)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to start data stream: %w", err)
+	}
+
+	// 3. 链接处理管道
+	currentStream := dataStream
+	for i, streamer := range streamers {
+		log.Printf("Job %s: Attaching streamer %d: %T", job.UUID, i+1, streamer)
+		currentStream = streamer.Process(currentStream, errc)
+	}
+
+	// 4. 将最终的流汇入到输出文件中
+	// generateOutput 现在需要消费 channel
+	// 它会在内部监听 errc，如果收到错误会提前终止
+	syncReturnData, filePath, genErr := s.generateOutputFromStream(job, currentStream, errc)
+	if genErr != nil {
+		return nil, "", genErr
+	}
+
+	return syncReturnData, filePath, nil
 }
 
 // --- 增强 applyOperation ---
@@ -502,8 +778,8 @@ func (s *jobService) applySort(sortParams []models.SortParam, data []map[string]
 			}
 
 			// Compare based on type
-			numI, iIsNum := convertToFloat64(valI)
-			numJ, jIsNum := convertToFloat64(valJ)
+			numI, iIsNum := utils.ConvertToFloat64(valI)
+			numJ, jIsNum := utils.ConvertToFloat64(valJ)
 
 			// If both are numbers, compare numerically
 			if iIsNum && jIsNum {
@@ -575,7 +851,7 @@ func (s *jobService) applyJoin(params models.JoinParams, leftData []map[string]i
 	joinCondition := params.On[0]
 
 	// 1. Fetch the right-side data
-	rightData, err := s.fetchDataForEntity("", params.RightDataSourceID, params.RightEntityName, nil)
+	rightData, err := s.FetchDataForEntity("", params.RightDataSourceID, params.RightEntityName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch right side of join ('%s'): %w", params.RightEntityName, err)
 	}
@@ -854,14 +1130,14 @@ func (s *jobService) dataToArrowRecord(data []map[string]interface{}) (arrow.Rec
 			// 根据 builder 的类型附加值
 			switch fb := builder.(type) {
 			case *array.Int64Builder:
-				num, ok := convertToFloat64(val) // 使用我们已有的转换函数
+				num, ok := utils.ConvertToFloat64(val) // 使用我们已有的转换函数
 				if ok {
 					fb.Append(int64(num))
 				} else {
 					fb.AppendNull()
 				}
 			case *array.Float64Builder:
-				num, ok := convertToFloat64(val)
+				num, ok := utils.ConvertToFloat64(val)
 				if ok {
 					fb.Append(num)
 				} else {
@@ -926,7 +1202,7 @@ func (s *jobService) applyFilter(condition models.Condition, data []map[string]i
 			continue
 		}
 
-		match, err := s.evaluateCondition(val, condition.Operator, condition.Value)
+		match, err := utils.EvaluateCondition(val, condition.Operator, condition.Value)
 		if err != nil {
 			// Log error or decide if one bad row evaluation fails the whole filter.
 			// For now, let's log and skip the row.
@@ -939,94 +1215,6 @@ func (s *jobService) applyFilter(condition models.Condition, data []map[string]i
 		}
 	}
 	return result, nil
-}
-
-// evaluateCondition is a helper for applyFilter
-func (s *jobService) evaluateCondition(rowValue interface{}, operator string, conditionValue interface{}) (bool, error) {
-	// This is a complex part. Needs robust type handling and operator logic.
-	// TODO: Implement proper type conversion and comparison for various operators and types.
-	// Example for basic equality on strings and numbers:
-	rowStr := fmt.Sprintf("%v", rowValue)
-	condStr := fmt.Sprintf("%v", conditionValue)
-
-	switch operator {
-	case "=":
-		// Attempt numeric comparison if possible, otherwise string
-		rowFloat, rOk := convertToFloat64(rowValue)
-		condFloat, cOk := convertToFloat64(conditionValue)
-		if rOk && cOk {
-			return rowFloat == condFloat, nil
-		}
-		return rowStr == condStr, nil
-	case "!=":
-		rowFloat, rOk := convertToFloat64(rowValue)
-		condFloat, cOk := convertToFloat64(conditionValue)
-		if rOk && cOk {
-			return rowFloat != condFloat, nil
-		}
-		return rowStr != condStr, nil
-	case ">":
-		rowFloat, rOk := convertToFloat64(rowValue)
-		condFloat, cOk := convertToFloat64(conditionValue)
-		if rOk && cOk {
-			return rowFloat > condFloat, nil
-		}
-		return false, fmt.Errorf("cannot compare non-numeric types with %s", operator)
-	case "<":
-		rowFloat, rOk := convertToFloat64(rowValue)
-		condFloat, cOk := convertToFloat64(conditionValue)
-		if rOk && cOk {
-			return rowFloat < condFloat, nil
-		}
-		return false, fmt.Errorf("cannot compare non-numeric types with %s", operator)
-	case ">=":
-		rowFloat, rOk := convertToFloat64(rowValue)
-		condFloat, cOk := convertToFloat64(conditionValue)
-		if rOk && cOk {
-			return rowFloat >= condFloat, nil
-		}
-		return false, fmt.Errorf("cannot compare non-numeric types with %s", operator)
-	case "<=":
-		rowFloat, rOk := convertToFloat64(rowValue)
-		condFloat, cOk := convertToFloat64(conditionValue)
-		if rOk && cOk {
-			return rowFloat <= condFloat, nil
-		}
-		return false, fmt.Errorf("cannot compare non-numeric types with %s", operator)
-	case "CONTAINS":
-		return strings.Contains(strings.ToLower(rowStr), strings.ToLower(condStr)), nil
-	case "NOT_CONTAINS":
-		return !strings.Contains(strings.ToLower(rowStr), strings.ToLower(condStr)), nil
-	case "STARTS_WITH":
-		return strings.HasPrefix(strings.ToLower(rowStr), strings.ToLower(condStr)), nil
-	case "ENDS_WITH":
-		return strings.HasSuffix(strings.ToLower(rowStr), strings.ToLower(condStr)), nil
-
-		// TODO: Add support for IN, NOT IN, IS NULL, IS NOT NULL, etc.
-	default:
-		return false, fmt.Errorf("unsupported filter operator: %s", operator)
-	}
-}
-
-// Helper to convert interface{} to float64 for comparisons
-func convertToFloat64(val interface{}) (float64, bool) {
-	if val == nil {
-		return 0, false
-	}
-	v := reflect.ValueOf(val)
-	switch v.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return float64(v.Int()), true
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return float64(v.Uint()), true
-	case reflect.Float32, reflect.Float64:
-		return v.Float(), true
-	case reflect.String:
-		f, err := strconv.ParseFloat(v.String(), 64)
-		return f, err == nil
-	default:
-		return 0, false
-	}
 }
 
 func (s *jobService) applyAggregate(agg models.Aggregation, data []map[string]interface{}) ([]map[string]interface{}, error) {
@@ -1071,7 +1259,7 @@ func (s *jobService) applyAggregate(agg models.Aggregation, data []map[string]in
 			}
 
 			val, valOk := row[f.Column]
-			numVal, numOk := convertToFloat64(val)
+			numVal, numOk := utils.ConvertToFloat64(val)
 
 			currentAggs := intermediateAggs[groupKey][f.Alias]
 			currentAggs["_count"]++ // Always increment count for any function if row matches group
@@ -1128,34 +1316,155 @@ func (s *jobService) applyAggregate(agg models.Aggregation, data []map[string]in
 	return finalResults, nil
 }
 
-// analyzePushdown 分离可下推和不可下推的操作
-func (s *jobService) analyzePushdown(ops []models.OperationStep) (pushdownOps, inMemoryOps []models.OperationStep) {
-	pushdownPossible := true
-	for _, op := range ops {
-		// 一旦遇到不可下推的操作，后续所有操作都在内存中进行
-		if !pushdownPossible {
-			inMemoryOps = append(inMemoryOps, op)
-			continue
+// FetchDataForEntity fetches data for a given datasource and entity, returning it as []map[string]interface{}.
+// this method centralizes the data loading logic used by both the initial pipeline and the 'join' operation.
+func (s *jobService) FetchDataForEntity(jobUUID string, dataSourceID uint, entityName string, step []models.OperationStep) ([]map[string]interface{}, error) {
+	dsConfig, err := s.dsService.GetDataSourceByID(dataSourceID)
+	if err != nil {
+		return nil, fmt.Errorf("datasource with ID %d not found: %w", dataSourceID, err)
+	}
+
+	slog.Info(fmt.Sprintf("Fetching data for entity '%s' from datasource %d (type: %s)", entityName, dataSourceID, dsConfig.Type))
+
+	if dsConfig.Type == models.CSV {
+		// --- CSV Data Fetching ---
+		file, err := os.Open(dsConfig.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open CSV file %s: %w", dsConfig.FilePath, err)
+		}
+		defer file.Close()
+		reader := stdcsv.NewReader(file)
+		header, err := reader.Read()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CSV header from %s: %w", dsConfig.FilePath, err)
 		}
 
-		switch op.Type {
-		case "filter_rows", "aggregate", "select_columns", "sort_rows", "limit_rows":
-			pushdownOps = append(pushdownOps, op)
-			// Aggregate 通常是最后一步可下推的操作
-			if op.Type == "aggregate" {
-				pushdownPossible = false
+		allRecords, err := reader.ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read all CSV records from %s: %w", dsConfig.FilePath, err)
+		}
+
+		var dataset []map[string]interface{}
+		for _, record := range allRecords {
+			if len(record) != len(header) {
+				slog.Info(fmt.Sprintf("Warning: CSV record field count (%d) does not match header field count (%d). Skipping record: %v",
+					len(record), len(header), record))
+				continue
 			}
-		case "join", "calculate_field":
-			// 这些操作当前在内存中执行，因此停止下推
-			pushdownPossible = false
-			inMemoryOps = append(inMemoryOps, op)
+			rowData := make(map[string]interface{})
+			for i, colName := range header {
+				rowData[colName] = record[i]
+			}
+			dataset = append(dataset, rowData)
+		}
+		return dataset, nil
+
+	} else if dsConfig.IsDatabase() { // Assume a helper `IsDatabase()` on the model, or list types explicitly
+		// --- Database Data Fetching ---
+		pushdownOps, inMemoryOps := s.analyzePushdown(step)
+
+		// --- **关键修改点：动态选择 SQL 构建器** ---
+		var builder squirrel.StatementBuilderType
+
+		switch dsConfig.Type {
+		case models.PostgreSQL:
+			builder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+		case models.MySQL, models.ClickHouse, models.SQLite:
+			builder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
 		default:
-			// 未知操作也在内存中执行
-			pushdownPossible = false
-			inMemoryOps = append(inMemoryOps, op)
+			// 如果遇到不支持下推的数据库类型，我们可以选择完全在内存中处理
+			slog.Warn(fmt.Sprintf("Warning: SQL pushdown not supported for database type '%s'. Falling back to in-memory processing for all operations.", dsConfig.Type))
+			// 将所有操作都转为内存中处理
+			inMemoryOps = append(pushdownOps, inMemoryOps...)
+			pushdownOps = nil // 清空下推操作
+		}
+
+		if len(pushdownOps) > 0 {
+
+			baseQuery := builder.Select().From(dsConfig.QuoteIdentifier(entityName))
+
+			// 3. 将可下推的操作应用到 SQL 构建器上
+			finalQueryBuilder, errBuild := s.buildSQLQuery(baseQuery, pushdownOps)
+			if errBuild != nil {
+				return nil, fmt.Errorf("failed to build pushdown query: %w", errBuild)
+			}
+
+			// 4. 生成最终的 SQL 和参数
+			sqlString, args, errSql := finalQueryBuilder.ToSql()
+			if errSql != nil {
+				return nil, fmt.Errorf("failed to generate SQL from builder: %w", errSql)
+			}
+			slog.Info(fmt.Sprintf("Job %s: Executing PUSHDOWN query for dialect '%s': %s | Args: %v", jobUUID, dsConfig.Type, sqlString, args))
+
+			// 5. 获取数据库连接并执行优化后的查询
+			db, _, errConn := s.dsService.GetDBConnection(dsConfig.ID)
+			if errConn != nil {
+				return nil, errConn
+			}
+			defer db.Close()
+
+			rows, errQuery := db.Query(sqlString, args...)
+			if errQuery != nil {
+				return nil, fmt.Errorf("failed to execute pushdown query: %w", errQuery)
+			}
+			defer rows.Close()
+
+			// 将查询结果加载到内存
+			return s.scanRowsToMap(rows, entityName)
+		} else {
+			db, dsConfigWithDetails, err := s.dsService.GetDBConnection(dataSourceID)
+			if err != nil {
+				return nil, err
+			}
+			defer db.Close()
+
+			query := fmt.Sprintf("SELECT * FROM %s", dsConfigWithDetails.QuoteIdentifier(entityName))
+			rows, err := db.Query(query)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query entity %s: %w", entityName, err)
+			}
+			defer rows.Close()
+			return s.scanRowsToMap(rows, entityName)
 		}
 	}
-	return pushdownOps, inMemoryOps
+
+	return nil, fmt.Errorf("unsupported data source type for fetching data: %s", dsConfig.Type)
+}
+
+// 你需要一个辅助函数来将 sql.Rows 扫描到 map, 如果还没有的话
+func (s *jobService) scanRowsToMap(rows *sql.Rows, entityName string) ([]map[string]interface{}, error) {
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get columns for entity %s: %w", entityName, err)
+	}
+
+	var dataset []map[string]interface{}
+	for rows.Next() {
+		rowValues := make([]interface{}, len(columns))
+		rowPointers := make([]interface{}, len(columns))
+		for i := range rowValues {
+			rowPointers[i] = &rowValues[i]
+		}
+
+		if err := rows.Scan(rowPointers...); err != nil {
+			return nil, fmt.Errorf("failed to scan row for entity %s: %w", entityName, err)
+		}
+
+		rowData := make(map[string]interface{})
+		for i, colName := range columns {
+			val := rowValues[i]
+			if b, ok := val.([]byte); ok {
+				rowData[colName] = string(b)
+			} else {
+				rowData[colName] = val
+			}
+		}
+		dataset = append(dataset, rowData)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration for entity %s: %w", entityName, err)
+	}
+	return dataset, nil
 }
 
 // buildSQLQuery 将可下推的操作应用到 squirrel 查询构建器上
@@ -1228,6 +1537,36 @@ func (s *jobService) buildSQLQuery(builder squirrel.SelectBuilder, ops []models.
 	return builder, nil
 }
 
+// analyzePushdown 分离可下推和不可下推的操作
+func (s *jobService) analyzePushdown(ops []models.OperationStep) (pushdownOps, inMemoryOps []models.OperationStep) {
+	pushdownPossible := true
+	for _, op := range ops {
+		// 一旦遇到不可下推的操作，后续所有操作都在内存中进行
+		if !pushdownPossible {
+			inMemoryOps = append(inMemoryOps, op)
+			continue
+		}
+
+		switch op.Type {
+		case "filter_rows", "aggregate", "select_columns", "sort_rows", "limit_rows":
+			pushdownOps = append(pushdownOps, op)
+			// Aggregate 通常是最后一步可下推的操作
+			if op.Type == "aggregate" {
+				pushdownPossible = false
+			}
+		case "join", "calculate_field":
+			// 这些操作当前在内存中执行，因此停止下推
+			pushdownPossible = false
+			inMemoryOps = append(inMemoryOps, op)
+		default:
+			// 未知操作也在内存中执行
+			pushdownPossible = false
+			inMemoryOps = append(inMemoryOps, op)
+		}
+	}
+	return pushdownOps, inMemoryOps
+}
+
 // conditionToSQLizer 将我们的 Condition DTO 转换为 squirrel.Sqlizer 接口
 func (s *jobService) conditionToSQLizer(cond *models.Condition) (squirrel.Sqlizer, error) {
 	if cond == nil {
@@ -1264,40 +1603,4 @@ func (s *jobService) conditionToSQLizer(cond *models.Condition) (squirrel.Sqlize
 	default:
 		return nil, fmt.Errorf("unsupported operator for SQL pushdown: %s", cond.Operator)
 	}
-}
-
-// 你需要一个辅助函数来将 sql.Rows 扫描到 map, 如果还没有的话
-func (s *jobService) scanRowsToMap(rows *sql.Rows, entityName string) ([]map[string]interface{}, error) {
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get columns for entity %s: %w", entityName, err)
-	}
-
-	var dataset []map[string]interface{}
-	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
-		rowPointers := make([]interface{}, len(columns))
-		for i := range rowValues {
-			rowPointers[i] = &rowValues[i]
-		}
-
-		if err := rows.Scan(rowPointers...); err != nil {
-			return nil, fmt.Errorf("failed to scan row for entity %s: %w", entityName, err)
-		}
-
-		rowData := make(map[string]interface{})
-		for i, colName := range columns {
-			val := rowValues[i]
-			if b, ok := val.([]byte); ok {
-				rowData[colName] = string(b)
-			} else {
-				rowData[colName] = val
-			}
-		}
-		dataset = append(dataset, rowData)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error during row iteration for entity %s: %w", entityName, err)
-	}
-	return dataset, nil
 }
